@@ -8,9 +8,7 @@ pub trait Command {
     async fn execute(player_id: SlotId, args: Vec<&str>);
 }
 
-pub struct CommandServer {
-
-}
+pub struct CommandServer {}
 
 impl Command for CommandServer {
 
