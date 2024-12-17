@@ -29,7 +29,7 @@ After the server is started for the first time a config.json file will be create
 Right now you need to restart to apply config changes.
 ## Security
 You should firewall your ports or bind you backend servers locally, otherwise someone could join your backend servers.
-## features
+## Features
 
 - [x] Joining to, forwarding and switching server
 - [x] Packet Limiter
