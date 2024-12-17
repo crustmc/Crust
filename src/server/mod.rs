@@ -1,8 +1,7 @@
-use std::{collections::HashMap, io::Cursor, path::{Path, PathBuf}, sync::{atomic::Ordering, Arc}};
+use std::{collections::HashMap, io::Cursor, path::{Path, PathBuf}, sync::{atomic::Ordering, Arc}, time::{Duration, Instant}};
 
 use base64::Engine;
 use image::{imageops::FilterType, ImageFormat};
-use lazy_static::lazy_static;
 use packets::{PlayerPublicKey, ProtocolState, SystemChatMessage};
 use proxy_handler::{ClientHandle, ConnectionHandle, PlayerSyncData};
 use rsa::{RsaPrivateKey, RsaPublicKey};
@@ -36,6 +35,8 @@ pub struct ProxyConfig {
     pub compression_threshold: i32,
     pub motd: String,
     pub favicon: Option<PathBuf>,
+    pub connection_throttle_time: i32,
+    pub connection_throttle_limit: u8,
     pub max_players: i32,
     pub online_mode: bool,
     pub offline_mode_encryption: bool,
@@ -59,6 +60,8 @@ impl Default for ProxyConfig {
             worker_threads: 0,
             compression_threshold: 256,
             motd: "A Rust Minecraft Proxy".to_owned(),
+            connection_throttle_time: 5000,
+            connection_throttle_limit: 20,
             favicon: None,
             max_players: 100,
             online_mode: false,
@@ -297,8 +300,34 @@ pub fn run_server() {
     runtime.block_on(async move {
         let listener = TcpListener::bind(&ProxyServer::instance().config.bind_address).await.unwrap();
         log::info!("Listening on {}", listener.local_addr().unwrap());
+        let mut map = HashMap::new();
+        let mut time = Instant::now();
+        let enabled = ProxyServer::instance().config.connection_throttle_time > 0;
+        let interval = Duration::from_millis(ProxyServer::instance().config().connection_throttle_time as u64);
+        let limit = ProxyServer::instance().config().connection_throttle_limit;
         loop {
             let (stream, peer_addr) = listener.accept().await.unwrap();
+            if enabled {
+                let counter = map.entry(peer_addr.ip()).or_insert(0u8);
+                *counter += 1;
+
+                let now = Instant::now();
+                let mut clear = false;
+                if now.duration_since(time) >= interval {
+                    *counter = 0;
+                    time = now;
+                    clear = true;
+                    println!("CLEAR");
+                }
+
+                if *counter > limit {
+                    println!("BLOCKE");
+                    continue;
+                }
+                if clear {
+                    map.clear();
+                }
+            }
             initial_handler::handle(stream, peer_addr).await;
         }
     });
