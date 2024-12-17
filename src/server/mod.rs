@@ -26,18 +26,19 @@ pub(crate) mod nbt;
 pub const NAME: &str = "Crust";
 pub const GIT_COMMIT_ID: &str = env!("GIT_COMMIT");
 pub const JENKINS_BUILD_NUMBER: &str = env!("BUILD_NUMBER");
-pub const FULL_NAME: &str = {
-    let name = NAME.to_owned();
-    if GIT_COMMIT_ID =! "" {
+
+pub fn get_full_name() -> String {
+    let mut name = NAME.to_owned();
+    if !GIT_COMMIT_ID.is_empty() {
         name += format!(":{}", GIT_COMMIT_ID).as_str();
     } else {
         name += ":unknown";
     }
-    if JENKINS_BUILD_NUMBER =! "" {
+    if !JENKINS_BUILD_NUMBER.is_empty() {
         name += format!(":{}", JENKINS_BUILD_NUMBER).as_str();
     }
-    name.as_str()
-};
+    name
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ProxyConfig {
@@ -200,7 +201,7 @@ impl ProxyServer {
 }
 
 pub fn run_server() {
-    log::info!(format!("Starting {FULL_NAME}..."));
+    log::info!("Starting {}...", get_full_name());
     let config_path = Path::new("config.json");
     let config = if !config_path.exists() {
         let default_config = ProxyConfig::default();
