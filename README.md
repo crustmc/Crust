@@ -3,13 +3,13 @@
 
 Crust is a Minecraft Layer 7 Reverse Proxy that aims for pure performance and rich features.
 
-The software is written in Rust only and in an early development stage. We are currently support all minecraft versions starting from 1.20.2. We aim to improve the protocol support to 1.8 and up
+The software is written in Rust only and in an early development stage. We are currently supporting all minecraft versions starting at 1.20.2. We aim to improve the protocol support to 1.8 and up
 
 
 
 ## Download and Installation
 
-Currently linux aarch64 and x86_64 are supported.
+Currently Linux aarch64 and x86_64 are supported.
 Download the binary file that matches your OS here: https://ci.outfluencer.dev/job/Crust/
 make the file executeable
 
