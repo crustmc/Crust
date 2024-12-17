@@ -47,3 +47,4 @@ You should firewall your ports or bind you backend servers locally, otherwise so
 - [ ] Permissions
 - [ ] Good Terminal UI
 - [ ] Command system
+- [ ] Limbo
