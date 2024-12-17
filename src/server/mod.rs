@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use slotmap::{DefaultKey, SlotMap};
 use tokio::{net::TcpListener, sync::RwLock, task::JoinHandle};
 
-use crate::{auth::GameProfile, chat::Text, util::IOResult};
+use crate::{auth::GameProfile, chat::Text, util::{IOError, IOErrorKind, IOResult}};
 
 pub(crate) mod backend;
 pub(crate) mod compression;
@@ -324,7 +324,9 @@ impl ProxiedPlayer {
         };
         let data = packets::get_full_server_packet_buf(&chat, self.protocol_version, self.client_handle.protocol_state())?;
         if let Some(data) = data {
-            self.client_handle.queue_packet(data, false).await;
+            if !self.client_handle.queue_packet(data, false).await {
+                return Err(IOError::new(IOErrorKind::UnexpectedEof, "Failed to queue chat message packet"));
+            }
         } else {
             println!("packet not in current state");
         }
@@ -401,7 +403,10 @@ impl ProxiedPlayer {
             // todo dont lock for settings
             if let Some(packet) = settings.as_ref() {
                 if let Some(data) = packets::get_full_client_packet_buf(packet, version, handle.protocol_state()).unwrap() {
-                    server_handle.queue_packet( data, true).await;
+                    if !server_handle.queue_packet(data, true).await {
+                        sync_data.is_switching_server.store(false, Ordering::Relaxed);
+                        return false;
+                    }
                 }
             }
             drop(settings);

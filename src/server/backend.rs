@@ -71,20 +71,20 @@ impl EstablishedBackend {
                     break;
                 }
 
-                 let packet_id = VarInt::decode_simple(&mut Cursor::new(&read_buf));
-                 if let Err(_e) = packet_id {
-                     self_handle.disconnect().await;
-                     break;
-                 }
-                 let packet_id = packet_id.unwrap().get();
-                
-                 let res = ServerPacketHandler::handle_packet(packet_id, &read_buf[VarInt::get_size(packet_id)..],
-                 sync_data.version, player_id, &self_handle, &sync_data, &partner.connection).await;
-                 if let Err(_e) = &res {
-                        res.unwrap();
-                     self_handle.disconnect().await;
-                     break;
-                 }
+                let packet_id = VarInt::decode_simple(&mut Cursor::new(&read_buf));
+                if let Err(_e) = packet_id {
+                    self_handle.disconnect().await;
+                    break;
+                }
+                let packet_id = packet_id.unwrap().get();
+            
+                let res = ServerPacketHandler::handle_packet(packet_id, &read_buf[VarInt::get_size(packet_id)..],
+                sync_data.version, player_id, &self_handle, &sync_data, &partner.connection).await;
+                if let Err(_e) = &res {
+                       res.unwrap();
+                    self_handle.disconnect().await;
+                    break;
+                }
                 if res.unwrap() && !partner.connection.queue_packet(read_buf, false).await {
                     // TODO: handle when client is disconnected
                     self_handle.disconnect().await;

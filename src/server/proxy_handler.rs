@@ -313,7 +313,7 @@ impl ConnectionHandle {
 
     pub async fn sync(&self) {
         let (sender, receiver) = tokio::sync::oneshot::channel();
-        self.sender.send(PacketSending::Sync(sender)).await.unwrap();
+        let _ = self.sender.send(PacketSending::Sync(sender)).await;
         let _ = receiver.await;
     }
 
