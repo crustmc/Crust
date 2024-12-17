@@ -1,6 +1,6 @@
 use std::{io::{Cursor, ErrorKind, Read, Write}, time::Duration};
 
-use byteorder::{BE, ReadBytesExt, WriteBytesExt};
+use byteorder::{ReadBytesExt, WriteBytesExt, BE};
 use either::Either;
 use serde_json::Value;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -34,17 +34,19 @@ pub trait ClientPacket {
 }
 
 pub trait Packet {
-    fn decode<R: Read + ?Sized>(src: &mut R, version: i32) -> IOResult<Self> where Self: Sized;
+    fn decode<R: Read + ?Sized>(src: &mut R, version: i32) -> IOResult<Self>
+    where
+        Self: Sized;
     fn encode<W: Write + ?Sized>(&self, dst: &mut W, version: i32) -> IOResult<()>;
 }
-    
+
 pub fn get_full_server_packet_buf<P: Packet + ServerPacket>(packet: &P, version: i32, protocol: ProtocolState) -> IOResult<Option<Vec<u8>>> {
     if let Some(packet_id) = PacketRegistry::instance().get_server_packet_id(protocol, version, packet.get_type()) {
         let mut data = Vec::new();
         VarInt(packet_id).encode_simple(&mut data)?;
         packet.encode(&mut data, version)?;
         return Ok(Some(data));
-    } 
+    }
     panic!("packet not found: {:#?}, version: {:#?}, protocol: {:#?}", packet.get_type(), version, protocol);
     Ok(None)
 }
@@ -54,7 +56,7 @@ pub fn get_full_server_packet_buf_write_buffer<P: Packet + ServerPacket>(buffer:
         VarInt(packet_id).encode_simple(buffer)?;
         packet.encode(buffer, version)?;
         return Ok(true);
-    } 
+    }
     panic!("packet not found: {:#?}, version: {:#?}, protocol: {:#?}", packet.get_type(), version, protocol);
     Ok(false)
 }
@@ -65,18 +67,18 @@ pub fn get_full_client_packet_buf<P: Packet + ClientPacket>(packet: &P, version:
         VarInt(packet_id).encode_simple(&mut data)?;
         packet.encode(&mut data, version)?;
         return Ok(Some(data));
-    } 
+    }
     panic!("packet not found: {:#?}, version: {:#?}, protocol: {:#?}", packet.get_type(), version, protocol);
     Ok(None)
 }
-    
+
 pub fn get_full_client_packet_buf_write_buffer<P: Packet + ClientPacket>(buffer: &mut Vec<u8>, packet: &P, version: i32, protocol: ProtocolState) -> IOResult<bool> {
     if let Some(packet_id) = PacketRegistry::instance().get_client_packet_id(protocol, version, packet.get_type()) {
         buffer.clear();
         VarInt(packet_id).encode_simple(buffer)?;
         packet.encode(buffer, version)?;
         return Ok(true);
-    } 
+    }
     panic!("packet not found: {:#?}, version: {:#?}, protocol: {:#?}", packet.get_type(), version, protocol);
     Ok(false)
 }
@@ -97,8 +99,10 @@ impl ClientPacket for Handshake {
 }
 
 impl Packet for Handshake {
-
-    fn decode<R: Read + ?Sized>(src: &mut R, _: i32) -> IOResult<Self> where Self: Sized {
+    fn decode<R: Read + ?Sized>(src: &mut R, _: i32) -> IOResult<Self>
+    where
+        Self: Sized,
+    {
         Ok(Self {
             version: VarInt::decode_simple(src)?.get(),
             host: EncodingHelper::read_string(src, 255)?,
@@ -117,7 +121,7 @@ impl Packet for Handshake {
 }
 
 pub struct LoginDisconnect {
-    pub text: Text
+    pub text: Text,
 }
 
 impl ServerPacket for LoginDisconnect {
@@ -127,7 +131,10 @@ impl ServerPacket for LoginDisconnect {
 }
 
 impl Packet for LoginDisconnect {
-    fn decode<R: Read + ?Sized>(src: &mut R, _: i32) -> IOResult<Self> where Self: Sized {
+    fn decode<R: Read + ?Sized>(src: &mut R, _: i32) -> IOResult<Self>
+    where
+        Self: Sized,
+    {
         let string = EncodingHelper::read_string(src, i16::MAX as usize)?;
         let value: Value = serde_json::from_str(&string)?;
         let text = crate::chat::deserialize_json(&value).map_err(|err| IOError::new(IOErrorKind::InvalidData, err))?;
@@ -146,7 +153,7 @@ impl Packet for LoginDisconnect {
 
 
 pub struct Kick {
-    pub text: Text
+    pub text: Text,
 }
 
 impl ServerPacket for Kick {
@@ -156,7 +163,10 @@ impl ServerPacket for Kick {
 }
 
 impl Packet for Kick {
-    fn decode<R: Read + ?Sized>(src: &mut R, version: i32) -> IOResult<Self> where Self: Sized {
+    fn decode<R: Read + ?Sized>(src: &mut R, version: i32) -> IOResult<Self>
+    where
+        Self: Sized,
+    {
         if version >= R1_20_3 {
             let nbt = nbt::read_networking_nbttag(src, version)?;
             if let Some(nbt_tag) = nbt.left() {
@@ -167,7 +177,7 @@ impl Packet for Kick {
                         text
                     })
                 } else {
-                    return Err(IOError::new(std::io::ErrorKind::InvalidData, "invalid nbt type"));
+                    Err(IOError::new(ErrorKind::InvalidData, "invalid nbt type"))
                 }
             } else {
                 panic!("this is impossible")
@@ -198,7 +208,7 @@ impl Packet for Kick {
 
 
 pub struct SetCompression {
-    pub compression: i32
+    pub compression: i32,
 }
 
 impl ServerPacket for SetCompression {
@@ -208,7 +218,10 @@ impl ServerPacket for SetCompression {
 }
 
 impl Packet for SetCompression {
-    fn decode<R: Read + ?Sized>(src: &mut R, _: i32) -> IOResult<Self> where Self: Sized {
+    fn decode<R: Read + ?Sized>(src: &mut R, _: i32) -> IOResult<Self>
+    where
+        Self: Sized,
+    {
         Ok(Self {
             compression: VarInt::decode_simple(src)?.get()
         })
@@ -230,7 +243,10 @@ impl ClientPacket for LoginAcknowledged {
 }
 
 impl Packet for LoginAcknowledged {
-    fn decode<R: Read + ?Sized>(_: &mut R, _: i32) -> IOResult<Self> where Self: Sized {
+    fn decode<R: Read + ?Sized>(_: &mut R, _: i32) -> IOResult<Self>
+    where
+        Self: Sized,
+    {
         Ok(Self)
     }
 
@@ -252,8 +268,10 @@ impl ClientPacket for LoginRequest {
 }
 
 impl Packet for LoginRequest {
-
-    fn decode<R: Read + ?Sized>(src: &mut R, version: i32) -> IOResult<Self> where Self: Sized {
+    fn decode<R: Read + ?Sized>(src: &mut R, version: i32) -> IOResult<Self>
+    where
+        Self: Sized,
+    {
         let name = EncodingHelper::read_string(src, 16)?;
         let public_key = if version >= R1_19 && version < R1_19_3 && src.read_u8()? != 0 {
             Some(PlayerPublicKey::decode(src, version)?)
@@ -280,7 +298,6 @@ impl Packet for LoginRequest {
                 key.encode(dst, version)?;
             } else {
                 dst.write_u8(0)?;
-
             }
         }
         if version >= R1_19_1 {
@@ -307,8 +324,10 @@ pub struct PlayerPublicKey {
 }
 
 impl PlayerPublicKey {
-
-    fn decode<R: Read + ?Sized>(src: &mut R, _: i32) -> IOResult<Self> where Self: Sized {
+    fn decode<R: Read + ?Sized>(src: &mut R, _: i32) -> IOResult<Self>
+    where
+        Self: Sized,
+    {
         Ok(Self {
             expiry: src.read_u64::<BE>()?,
             key: EncodingHelper::read_byte_array(src, 512)?,
@@ -338,8 +357,10 @@ impl ServerPacket for EncryptionRequest {
 }
 
 impl Packet for EncryptionRequest {
-    
-    fn decode<R: Read + ?Sized>(src: &mut R, version: i32) -> IOResult<Self> where Self: Sized {
+    fn decode<R: Read + ?Sized>(src: &mut R, version: i32) -> IOResult<Self>
+    where
+        Self: Sized,
+    {
         let server_id = EncodingHelper::read_string(src, 20)?;
         let public_key = EncodingHelper::read_byte_array(src, 256)?;
         let verify_token = EncodingHelper::read_byte_array(src, 256)?;
@@ -374,8 +395,10 @@ impl ClientPacket for EncryptionResponse {
 }
 
 impl Packet for EncryptionResponse {
-
-    fn decode<R: Read + ?Sized>(src: &mut R, version: i32) -> IOResult<Self> where Self: Sized {
+    fn decode<R: Read + ?Sized>(src: &mut R, version: i32) -> IOResult<Self>
+    where
+        Self: Sized,
+    {
         let shared_secret = EncodingHelper::read_byte_array(src, 128)?;
         let verify_token;
         let encryption_data;
@@ -432,8 +455,10 @@ impl ServerPacket for LoginSuccess {
 }
 
 impl Packet for LoginSuccess {
-
-    fn decode<R: Read + ?Sized>(src: &mut R, version: i32) -> IOResult<Self> where Self: Sized {
+    fn decode<R: Read + ?Sized>(src: &mut R, version: i32) -> IOResult<Self>
+    where
+        Self: Sized,
+    {
         let id = if version >= R1_16 {
             EncodingHelper::read_uuid(src)?.to_string()
         } else {
@@ -504,8 +529,10 @@ impl ServerPacket for LoginPluginRequest {
 }
 
 impl Packet for LoginPluginRequest {
-
-    fn decode<R: Read + ?Sized>(src: &mut R, _: i32) -> IOResult<Self> where Self: Sized {
+    fn decode<R: Read + ?Sized>(src: &mut R, _: i32) -> IOResult<Self>
+    where
+        Self: Sized,
+    {
         let id = VarInt::decode(src, 5)?.get();
         let channel = EncodingHelper::read_string(src, 255)?;
         let mut data = Vec::new();
@@ -533,8 +560,10 @@ impl ClientPacket for LoginPluginResponse {
 }
 
 impl Packet for LoginPluginResponse {
-
-    fn decode<R: Read + ?Sized>(src: &mut R, _: i32) -> IOResult<Self> where Self: Sized {
+    fn decode<R: Read + ?Sized>(src: &mut R, _: i32) -> IOResult<Self>
+    where
+        Self: Sized,
+    {
         let id = VarInt::decode(src, 5)?.get();
         let data = match src.read_u8()? {
             0 => None,
@@ -554,10 +583,10 @@ impl Packet for LoginPluginResponse {
             Some(ref data) => {
                 dst.write_u8(1)?;
                 dst.write_all(data)?;
-            },
+            }
             None => {
                 dst.write_u8(0)?;
-            },
+            }
         }
         Ok(())
     }
@@ -574,8 +603,10 @@ impl ServerPacket for CookieRequest {
 }
 
 impl Packet for CookieRequest {
-
-    fn decode<R: Read + ?Sized>(src: &mut R, _: i32) -> IOResult<Self> where Self: Sized {
+    fn decode<R: Read + ?Sized>(src: &mut R, _: i32) -> IOResult<Self>
+    where
+        Self: Sized,
+    {
         Ok(Self { cookie: EncodingHelper::read_string(src, 32767)? })
     }
 
@@ -597,8 +628,10 @@ impl ClientPacket for CookieResponse {
 }
 
 impl Packet for CookieResponse {
-    
-    fn decode<R: Read + ?Sized>(src: &mut R, _: i32) -> IOResult<Self> where Self: Sized {
+    fn decode<R: Read + ?Sized>(src: &mut R, _: i32) -> IOResult<Self>
+    where
+        Self: Sized,
+    {
         let cookie = EncodingHelper::read_string(src, 32767)?;
         let data = match src.read_u8()? {
             0 => None,
@@ -613,7 +646,7 @@ impl Packet for CookieResponse {
             Some(data) => {
                 dst.write_u8(1)?;
                 EncodingHelper::write_byte_array(dst, data)?;
-            },
+            }
             None => dst.write_u8(0)?,
         }
         Ok(())
@@ -630,7 +663,7 @@ pub struct ClientSettings {
     pub main_hand: i32,
     pub disable_text_filtering: bool,
     pub allow_server_listing: bool,
-    pub particel_status: i32
+    pub particel_status: i32,
 }
 
 
@@ -641,8 +674,10 @@ impl ClientPacket for ClientSettings {
 }
 
 impl Packet for ClientSettings {
-    
-    fn decode<R: Read + ?Sized>(src: &mut R, version: i32) -> IOResult<Self> where Self: Sized {
+    fn decode<R: Read + ?Sized>(src: &mut R, version: i32) -> IOResult<Self>
+    where
+        Self: Sized,
+    {
         let local = EncodingHelper::read_string(src, 16)?;
         let view_distance = src.read_i8()?;
         let chat_flags = if version > R1_9 {
@@ -670,15 +705,15 @@ impl Packet for ClientSettings {
             particel_status = VarInt::decode_simple(src)?.get();
         }
         Ok(ClientSettings {
-            local: local,
-            view_distance: view_distance,
-            allow_server_listing: allow_server_listing,
-            chat_colours: chat_colours,
-            chat_flags: chat_flags,
-            disable_text_filtering: disable_text_filtering,
-            main_hand: main_hand,
-            particel_status: particel_status,
-            skin_parts: skin_parts
+            local,
+            view_distance,
+            allow_server_listing,
+            chat_colours,
+            chat_flags,
+            disable_text_filtering,
+            main_hand,
+            particel_status,
+            skin_parts,
         })
     }
 
@@ -692,16 +727,16 @@ impl Packet for ClientSettings {
             dst.write_u8(self.chat_flags as u8)?;
         }
 
-        dst.write_u8(if self.chat_colours {1} else {0})?;
+        dst.write_u8(if self.chat_colours { 1 } else { 0 })?;
         dst.write_i8(self.skin_parts)?;
         if version >= R1_9 {
             VarInt(self.main_hand).encode_simple(dst)?;
         }
         if version >= R1_17 {
-            dst.write_u8(if self.disable_text_filtering {1} else {0})?;
+            dst.write_u8(if self.disable_text_filtering { 1 } else { 0 })?;
         }
         if version >= R1_18 {
-            dst.write_u8(if self.allow_server_listing {1} else {0})?;
+            dst.write_u8(if self.allow_server_listing { 1 } else { 0 })?;
         }
         if version >= R1_21_2 {
             VarInt(self.particel_status).encode_simple(dst)?;
@@ -711,8 +746,8 @@ impl Packet for ClientSettings {
 }
 
 
-pub struct UnsignedClientCommand  {
-    pub message: String
+pub struct UnsignedClientCommand {
+    pub message: String,
 }
 
 impl ClientPacket for UnsignedClientCommand {
@@ -722,7 +757,10 @@ impl ClientPacket for UnsignedClientCommand {
 }
 
 impl Packet for UnsignedClientCommand {
-    fn decode<R: Read + ?Sized>(src: &mut R, _: i32) -> IOResult<Self> where Self: Sized {
+    fn decode<R: Read + ?Sized>(src: &mut R, _: i32) -> IOResult<Self>
+    where
+        Self: Sized,
+    {
         Ok(UnsignedClientCommand {
             message: EncodingHelper::read_string(src, i16::MAX as usize)?
         })
@@ -734,9 +772,9 @@ impl Packet for UnsignedClientCommand {
     }
 }
 
-pub struct SystemChatMessage  {
+pub struct SystemChatMessage {
     pub message: Text,
-    pub pos: i32
+    pub pos: i32,
 }
 
 impl ServerPacket for SystemChatMessage {
@@ -746,7 +784,10 @@ impl ServerPacket for SystemChatMessage {
 }
 
 impl Packet for SystemChatMessage {
-    fn decode<R: Read + ?Sized>(src: &mut R, version: i32) -> IOResult<Self> where Self: Sized {
+    fn decode<R: Read + ?Sized>(src: &mut R, version: i32) -> IOResult<Self>
+    where
+        Self: Sized,
+    {
         let nbt = nbt::read_networking_nbttag(src, version)?;
         if let Some(nbt_tag) = nbt.left() {
             if let Some(nbt_tag) = nbt_tag {
@@ -754,19 +795,18 @@ impl Packet for SystemChatMessage {
                 let text = crate::chat::deserialize_json(&json).map_err(|err| IOError::new(ErrorKind::InvalidData, err))?;
                 let pos;
                 if version >= R1_19_1 {
-                    pos = if src.read_u8()? != 0 { 2 } else {0};
+                    pos = if src.read_u8()? != 0 { 2 } else { 0 };
                 } else {
                     pos = VarInt::decode(src, 5)?.get();
                 }
-                return Ok(Self {
+                Ok(Self {
                     message: text,
-                    pos
-                });
+                    pos,
+                })
             } else {
-                return Err(IOError::new(std::io::ErrorKind::InvalidData, "invalid nbt type"));
+                Err(IOError::new(ErrorKind::InvalidData, "invalid nbt type"))
             }
-            
-        }else {
+        } else {
             todo!()
         }
     }
@@ -820,7 +860,7 @@ pub async fn read_and_decode_packet<R: AsyncRead + Unpin + ?Sized>(src: &mut R, 
 }
 
 pub async fn encode_and_send_packet<W: AsyncWrite + Unpin + ?Sized>(dst: &mut W, write_buf: &[u8], temp_buf: &mut Vec<u8>,
-    compression: i32, encryption: &mut Option<PacketEncryption>) -> IOResult<()> {
+                                                                    compression: i32, encryption: &mut Option<PacketEncryption>) -> IOResult<()> {
     temp_buf.clear();
     if compression >= 0 {
         super::compression::compress(write_buf, compression, temp_buf)?;

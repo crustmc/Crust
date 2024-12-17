@@ -53,7 +53,7 @@ fn serialize_content_into(text: &Text, map: &mut Map<String, Value>) {
     match &text.content {
         TextContent::Literal(text) => {
             map.insert("text".to_string(), text.clone().into());
-        },
+        }
         TextContent::Translation { key, fallback, with } => {
             map.insert("translate".to_string(), key.clone().into());
             if let Some(fallback) = fallback {
@@ -62,7 +62,7 @@ fn serialize_content_into(text: &Text, map: &mut Map<String, Value>) {
             if let Some(with) = with {
                 map.insert("with".to_string(), Value::Array(with.iter().map(serialize_json).collect()));
             }
-        },
+        }
         TextContent::Score { name, objective, value } => {
             let mut score_map = Map::new();
             score_map.insert("name".to_string(), Value::String(name.clone()));
@@ -71,16 +71,16 @@ fn serialize_content_into(text: &Text, map: &mut Map<String, Value>) {
                 score_map.insert("value".to_string(), Value::String(value.clone()));
             }
             map.insert("score".to_string(), Value::Object(score_map));
-        },
+        }
         TextContent::EntitySelector { selector, separator } => {
             map.insert("selector".to_string(), Value::String(selector.clone()));
             if let Some(separator) = separator {
                 map.insert("separator".to_string(), serialize_json(separator));
             }
-        },
+        }
         TextContent::Keybind(key) => {
             map.insert("keybind".to_string(), Value::String(key.clone()));
-        },
+        }
         TextContent::Nbt { nbt, interpret, separator, block, entity, storage } => {
             map.insert("nbt".to_string(), Value::String(nbt.clone()));
             if let Some(interpret) = interpret {
@@ -98,7 +98,7 @@ fn serialize_content_into(text: &Text, map: &mut Map<String, Value>) {
             if let Some(storage) = storage {
                 map.insert("storage".to_string(), Value::String(storage.clone()));
             }
-        },
+        }
     }
 }
 
@@ -154,7 +154,7 @@ pub fn serialize_json(text: &Text) -> Value {
                     "action": "show_item",
                     "contents": map,
                 })
-            },
+            }
             HoverEvent::ShowEntity { id, name, entity_type } => {
                 let mut map = Map::new();
                 map.insert("id".to_string(), Value::String(id.clone()));
@@ -166,7 +166,7 @@ pub fn serialize_json(text: &Text) -> Value {
                     "action": "show_entity",
                     "contents": map,
                 })
-            },
+            }
             HoverEvent::Unresolved { action, value } => serde_json::json!({
                 "action": action,
                 "value": value,
@@ -269,7 +269,7 @@ fn deserialize_style0(map: &Map<String, Value>) -> Result<Style> {
                 } else {
                     return Err(DeserializationError::InvalidColorFormat);
                 }
-            },
+            }
         });
     }
     style.font = map.get("font").map(|v| v.as_str().map(String::from)).flatten();
@@ -289,13 +289,13 @@ fn deserialize_content(map: &Map<String, Value>) -> Result<TextContent> {
         match text {
             Value::String(str) => {
                 return Ok(TextContent::Literal(str.clone()));
-            },
+            }
             Value::Bool(b) => {
                 return Ok(TextContent::Literal(b.to_string()));
-            },
+            }
             Value::Number(n) => {
                 return Ok(TextContent::Literal(n.to_string()));
-            },
+            }
             _ => return Err(DeserializationError::InvalidValueType),
         }
     }
@@ -367,7 +367,7 @@ pub fn deserialize_json(value: &Value) -> Result<Text> {
                 }
             }
             Ok(text)
-        },
+        }
         Value::Object(obj) => {
             let style = deserialize_style0(obj)?;
             let click_event = match obj.get("clickEvent").map(|v| v.as_object()).flatten() {
@@ -386,7 +386,7 @@ pub fn deserialize_json(value: &Value) -> Result<Text> {
                     };
                     let value = map.get("value").map(|v| v.as_str()).flatten().map(String::from).ok_or(DeserializationError::MissingClickEventValue)?;
                     Some(ClickEvent { action, value })
-                },
+                }
                 None => None,
             };
             let hover_event = match obj.get("hoverEvent").map(|v| v.as_object()).flatten() {
@@ -403,7 +403,7 @@ pub fn deserialize_json(value: &Value) -> Result<Text> {
                                         let count = contents.get("count").map(|v| v.as_i64()).flatten().map(|v| v as i32);
                                         let tag = contents.get("tag").map(|v| v.as_str()).flatten().map(String::from);
                                         HoverEvent::ShowItem { id, count, tag }
-                                    },
+                                    }
                                     "show_entity" => {
                                         let name = contents.get("name").map(|v| v.as_str()).flatten().map(String::from);
                                         let entity_type = contents.get("type").map(|v| v.as_str()).flatten().map(String::from).ok_or(DeserializationError::MissingHoverEventValue)?;
@@ -424,13 +424,13 @@ pub fn deserialize_json(value: &Value) -> Result<Text> {
                                                     let p0 = (v0 as u64) << 32 | (v1 as u64 & 0xFFFFFFFFu64);
                                                     let p1 = (v2 as u64) << 32 | (v3 as u64 & 0xFFFFFFFFu64);
                                                     Uuid::from_u64_pair(p0, p1).to_string()
-                                                },
+                                                }
                                                 _ => return Err(DeserializationError::MalformedHoverEventValue),
                                             },
                                             None => return Err(DeserializationError::MissingHoverEventValue),
                                         };
                                         HoverEvent::ShowEntity { id, name, entity_type }
-                                    },
+                                    }
                                     _ => return Err(DeserializationError::InvalidHoverEventAction),
                                 }
                             } else if let Some(value) = map.get("value").map(|v| v.as_str()).flatten() {
@@ -438,10 +438,10 @@ pub fn deserialize_json(value: &Value) -> Result<Text> {
                             } else {
                                 return Err(DeserializationError::MissingHoverEventValue);
                             }
-                        },
+                        }
                         None => return Err(DeserializationError::InvalidValueType),
                     })
-                },
+                }
                 None => None,
             };
             let mut extra = Vec::new();
@@ -461,16 +461,16 @@ pub fn deserialize_json(value: &Value) -> Result<Text> {
                 extra,
                 content,
             })
-        },
+        }
         Value::String(str) => {
             Ok(str.clone().into())
-        },
+        }
         Value::Bool(b) => {
             Ok(b.to_string().into())
-        },
+        }
         Value::Number(n) => {
             Ok(n.to_string().into())
-        },
+        }
         _ => Err(DeserializationError::InvalidValueType),
     }
 }

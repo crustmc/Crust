@@ -1,14 +1,13 @@
-use std::{collections::HashMap, fmt::Debug, io::ErrorKind, u64};
+use crate::{util::{IOError, IOResult}, version};
 use byteorder::{ReadBytesExt, WriteBytesExt, BE};
 use cesu8::to_java_cesu8;
 use either::Either;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value};
-use crate::{util::{IOError, IOResult}, version};
+use std::{collections::HashMap, fmt::Debug, io::ErrorKind};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum NbtType {
-    //EndTag,
     ByteTag(i8),
     ShortTag(i16),
     IntTag(i32),
@@ -26,7 +25,7 @@ pub enum NbtType {
 impl NbtType {
     #[inline]
     pub fn from_json(json: &Value) -> IOResult<Self> {
-        return Ok(match json {
+        Ok(match json {
             Value::Number(value) => {
                 if let Some(value) = value.as_f64() {
                     if value >= f32::MIN as f64 && value <= f32::MAX as f64 {
@@ -38,9 +37,9 @@ impl NbtType {
                     let value = value.as_i64().unwrap();
                     if value >= i8::MIN as i64 && value <= i8::MAX as i64 {
                         Self::ByteTag(value as i8)
-                    }else if value >= i16::MIN as i64 && value <= i16::MAX as i64 {
+                    } else if value >= i16::MIN as i64 && value <= i16::MAX as i64 {
                         Self::ShortTag(value as i16)
-                    }else  if value >= i32::MIN as i64 && value <= i32::MAX as i64 {
+                    } else if value >= i32::MIN as i64 && value <= i32::MAX as i64 {
                         Self::IntTag(value as i32)
                     } else {
                         Self::LongTag(value)
@@ -49,20 +48,19 @@ impl NbtType {
             }
             Value::String(value) => {
                 Self::StringTag(value.to_owned())
-            },
+            }
             Value::Bool(value) => {
                 if *value {
                     Self::ByteTag(1)
                 } else {
                     Self::ByteTag(0)
                 }
-            },
+            }
             Value::Array(values) => {
-
                 if values.is_empty() {
                     Self::ListTag(0, Vec::new())
                 } else {
-                    let id = Self::from_json(values.get(0).unwrap())?.id();
+                    let id = Self::from_json(values.first().unwrap())?.id();
                     match id {
                         1 => {
                             let mut bytes = Vec::new();
@@ -74,7 +72,7 @@ impl NbtType {
                                 }
                             }
                             Self::ByteArrayTag(bytes)
-                        },
+                        }
                         3 => {
                             let mut ints = Vec::new();
                             for byte in values {
@@ -85,7 +83,7 @@ impl NbtType {
                                 }
                             }
                             Self::IntArrayTag(ints)
-                        },
+                        }
                         12 => {
                             let mut longs = Vec::new();
                             for byte in values {
@@ -96,7 +94,7 @@ impl NbtType {
                                 }
                             }
                             Self::LongArrayTag(longs)
-                        },
+                        }
                         _ => {
                             let mut all = Vec::new();
                             for value in values {
@@ -104,7 +102,7 @@ impl NbtType {
                                 match nbt {
                                     Self::CompoundTag(_) => {
                                         all.push(nbt);
-                                    },
+                                    }
                                     _ => {
                                         let mut map = HashMap::new();
                                         map.insert("".to_string(), nbt);
@@ -116,7 +114,7 @@ impl NbtType {
                         }
                     }
                 }
-            },
+            }
             Value::Object(value) => {
                 let mut map = HashMap::new();
                 for (name, value) in value {
@@ -127,13 +125,13 @@ impl NbtType {
             Value::Null => {
                 return Err(IOError::new(ErrorKind::InvalidData, "null in json"));
             }
-        });
+        })
     }
 
     #[inline]
     pub fn to_json(&self) -> Value {
         match self {
-           // Self::EndTag => Value::Null,
+            // Self::EndTag => Value::Null,
             Self::ByteTag(value) => Value::Number((*value).into()),
             Self::ShortTag(value) => Value::Number((*value).into()),
             Self::IntTag(value) => Value::Number((*value).into()),
@@ -149,10 +147,10 @@ impl NbtType {
                     }
                 } else if *value == -0.0 || *value == 0.0 {
                     Value::Number(Number::from_f64(*value as f64).unwrap())
-                }else {
+                } else {
                     Value::String("NaN".to_string())
                 }
-            },
+            }
             Self::DoubleTag(value) => {
                 if value.is_normal() {
                     Value::Number(Number::from_f64(*value).unwrap())
@@ -164,10 +162,10 @@ impl NbtType {
                     }
                 } else if *value == -0.0 || *value == 0.0 {
                     Value::Number(Number::from_f64(*value).unwrap())
-                }else {
+                } else {
                     Value::String("NaN".to_string())
                 }
-            },
+            }
             Self::ByteArrayTag(value) => {
                 let mut data = Vec::new();
                 for byte in value {
@@ -188,13 +186,12 @@ impl NbtType {
                     data.push(Value::Number((*long).into()));
                 }
                 Value::Array(data)
-            },
+            }
             Self::StringTag(value) => Value::String(value.to_owned()),
             Self::ListTag(_, values) => {
                 let mut data = Vec::new();
                 for nbt in values {
-                    match nbt {
-                      NbtType::CompoundTag(map) => {
+                    if let NbtType::CompoundTag(map) = nbt {
                         if map.len() == 1 {
                             let first = map.get("");
                             if let Some(first) = first {
@@ -202,11 +199,8 @@ impl NbtType {
                                 continue;
                             }
                         }
-                      },
-                      _ => {} 
                     }
                     data.push(nbt.to_json());
-
                 }
                 Value::Array(data)
             }
@@ -223,7 +217,7 @@ impl NbtType {
     #[inline]
     pub fn id(&self) -> i8 {
         match self {
-           // Self::EndTag => 0,
+            // Self::EndTag => 0,
             Self::ByteTag(_) => 1,
             Self::ShortTag(_) => 2,
             Self::IntTag(_) => 3,
@@ -238,35 +232,38 @@ impl NbtType {
             Self::LongArrayTag(_) => 12,
         }
     }
-    
+
     #[inline]
-    fn read<R: ReadBytesExt + ?Sized>(input: &mut R, counter: &mut NbtCounter, id: i8) -> IOResult<Self> where Self: Sized {
+    fn read<R: ReadBytesExt + ?Sized>(input: &mut R, counter: &mut NbtCounter, id: i8) -> IOResult<Self>
+    where
+        Self: Sized,
+    {
         Ok(match id {
             //0 => Self::EndTag,
             1 => {
                 counter.account_bytes(9)?;
-                Self::ByteTag(input.read_i8()?) 
-            },
+                Self::ByteTag(input.read_i8()?)
+            }
             2 => {
                 counter.account_bytes(10)?;
                 Self::ShortTag(input.read_i16::<BE>()?)
-            },
+            }
             3 => {
                 counter.account_bytes(12)?;
                 Self::IntTag(input.read_i32::<BE>()?)
-            },
+            }
             4 => {
                 counter.account_bytes(14)?;
                 Self::LongTag(input.read_i64::<BE>()?)
-            },
+            }
             5 => {
                 counter.account_bytes(12)?;
                 Self::FloatTag(input.read_f32::<BE>()?)
-            },
+            }
             6 => {
                 counter.account_bytes(14)?;
                 Self::DoubleTag(input.read_f64::<BE>()?)
-            },
+            }
             7 => {
                 counter.account_bytes(24)?;
                 let len = input.read_i32::<BE>()?;
@@ -278,33 +275,33 @@ impl NbtType {
                 counter.account_bytes(len as u64)?;
                 // this should be faster
                 let mut byte_array = vec![0u8; len];
-                input.read_exact(&mut byte_array)?; 
-                Self::ByteArrayTag( unsafe {core::mem::transmute(byte_array)} )
-            },
+                input.read_exact(&mut byte_array)?;
+                Self::ByteArrayTag(unsafe { core::mem::transmute(byte_array) })
+            }
             8 => {
                 counter.account_bytes(36)?;
                 let string = read_java_utf(input)?;
                 counter.account_bytes((string.len() * 2) as u64)?;
                 Self::StringTag(string)
-            },
+            }
             9 => {
                 counter.push()?;
                 counter.account_bytes(37)?;
                 let nbt_type = input.read_i8()?;
                 let amt = input.read_i32::<BE>()?;
-        
+
                 if nbt_type == 0 && amt > 0 {
                     return Err(IOError::new(ErrorKind::InvalidData, "Missing type on ListTag"));
                 }
                 let mut tags: Vec<NbtType> = Vec::new();
-        
+
                 counter.account_bytes((4 * amt) as u64)?;
                 for _ in 0..amt {
                     tags.push(NbtType::read(input, counter, nbt_type)?);
                 }
                 counter.pop()?;
                 Self::ListTag(nbt_type, tags)
-            },
+            }
             10 => {
                 counter.push()?;
                 counter.account_bytes(48)?;
@@ -319,13 +316,13 @@ impl NbtType {
                     counter.account_bytes(28)?;
                     counter.account_bytes((2 * string.len()) as u64)?;
                     let tag = NbtType::read(input, counter, t)?;
-                    if map.insert(string, tag) == None {
+                    if map.insert(string, tag).is_none() {
                         counter.account_bytes(36)?;
                     }
                 }
                 counter.pop()?;
                 Self::CompoundTag(map)
-            },
+            }
             11 => {
                 counter.account_bytes(24)?;
                 let len = input.read_i32::<BE>()?;
@@ -334,13 +331,13 @@ impl NbtType {
                 }
                 counter.account_bytes((4 * len) as u64)?;
 
-                let mut ints: Vec<i32> = vec![0;len as usize];
+                let mut ints: Vec<i32> = vec![0; len as usize];
 
                 for index in 0..len {
                     ints[index as usize] = input.read_i32::<BE>()?;
                 }
                 Self::IntArrayTag(ints)
-            },
+            }
             12 => {
                 counter.account_bytes(24)?;
                 let len = input.read_i32::<BE>()?;
@@ -348,7 +345,7 @@ impl NbtType {
                     return Err(IOError::new(ErrorKind::InvalidData, format!("negative int arr size {len}")));
                 }
                 counter.account_bytes((8 * len) as u64)?;
-                let mut longs: Vec<i64> =vec![0;len as usize];
+                let mut longs: Vec<i64> = vec![0; len as usize];
 
                 for index in 0..len {
                     longs[index as usize] = input.read_i64::<BE>()?;
@@ -364,7 +361,7 @@ impl NbtType {
     #[inline]
     fn write<W: WriteBytesExt + ?Sized>(&self, out: &mut W) -> IOResult<()> {
         match self {
-           // Self::EndTag => {}
+            // Self::EndTag => {}
             Self::ByteTag(value) => {
                 out.write_i8(*value)?;
             }
@@ -385,7 +382,7 @@ impl NbtType {
             }
             Self::ByteArrayTag(value) => {
                 out.write_i32::<BE>(value.len() as i32)?;
-                out.write_all(unsafe {core::mem::transmute::<_, &Vec<u8>>(value)})?;
+                out.write_all(unsafe { core::mem::transmute::<_, &Vec<u8>>(value) })?;
             }
             Self::StringTag(value) => {
                 write_java_utf(out, value)?;
@@ -395,7 +392,7 @@ impl NbtType {
                 out.write_i32::<BE>(value.len() as i32)?;
                 for tag in value {
                     NbtType::write(tag, out)?;
-                }           
+                }
             }
             Self::CompoundTag(value) => {
                 for (string, nbt_type) in value {
@@ -412,25 +409,25 @@ impl NbtType {
                 out.write_i32::<BE>(value.len() as i32)?;
                 for int in value {
                     out.write_i32::<BE>(*int)?;
-                }            
+                }
             }
             Self::LongArrayTag(value) => {
                 out.write_i32::<BE>(value.len() as i32)?;
                 for long in value {
                     out.write_i64::<BE>(*long)?;
-                }            
-            },
+                }
+            }
         }
         Ok(())
     }
 }
 
 #[inline]
-pub fn read_networking_nbttag<R: ReadBytesExt + ?Sized>(input: &mut R, version: i32) -> IOResult<Either<Option<NbtType>,NamedTag>> {
+pub fn read_networking_nbttag<R: ReadBytesExt + ?Sized>(input: &mut R, version: i32) -> IOResult<Either<Option<NbtType>, NamedTag>> {
     let mut counter = NbtCounter {
         depth: 0,
         max_bytes: u64::MAX,
-        used_bytes: 0
+        used_bytes: 0,
     };
     let tag_type = input.read_i8()?;
     if tag_type == 0 {
@@ -445,14 +442,13 @@ pub fn read_networking_nbttag<R: ReadBytesExt + ?Sized>(input: &mut R, version: 
         let tag = NbtType::read(input, &mut counter, tag_type)?;
         Ok(Either::Right(NamedTag {
             name,
-            tag
+            tag,
         }))
     }
 }
 
 #[inline]
-pub fn write_networking_nbttag<W: WriteBytesExt + ?Sized>(out: &mut W, version: i32, either: &Either<Option<NbtType>,NamedTag>) -> IOResult<()> {
-
+pub fn write_networking_nbttag<W: WriteBytesExt + ?Sized>(out: &mut W, version: i32, either: &Either<Option<NbtType>, NamedTag>) -> IOResult<()> {
     if let Some(option) = either.as_ref().left() {
         if let Some(nbt) = option {
             out.write_i8(nbt.id())?;
@@ -471,7 +467,7 @@ pub fn write_networking_nbttag<W: WriteBytesExt + ?Sized>(out: &mut W, version: 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NamedTag {
     name: String,
-    tag: NbtType
+    tag: NbtType,
 }
 
 #[inline]
@@ -483,7 +479,7 @@ pub fn read_java_utf<R: ReadBytesExt + ?Sized>(input: &mut R) -> IOResult<String
 }
 
 #[inline]
-pub fn write_java_utf<W: WriteBytesExt+ ?Sized>(out: &mut W, string: &String) -> IOResult<()> {
+pub fn write_java_utf<W: WriteBytesExt + ?Sized>(out: &mut W, string: &str) -> IOResult<()> {
     let encoded = to_java_cesu8(string);
     out.write_u16::<BE>(encoded.len() as u16)?;
     out.write_all(&encoded)?;
@@ -493,11 +489,10 @@ pub fn write_java_utf<W: WriteBytesExt+ ?Sized>(out: &mut W, string: &String) ->
 pub struct NbtCounter {
     used_bytes: u64,
     max_bytes: u64,
-    depth: u16
+    depth: u16,
 }
 
 impl NbtCounter {
-
     #[inline]
     pub fn account_bytes(&mut self, bytes: u64) -> IOResult<()> {
         if self.used_bytes + bytes > self.max_bytes {

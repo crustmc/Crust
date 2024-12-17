@@ -12,7 +12,6 @@ pub struct GameProfile {
 }
 
 impl GameProfile {
-
     pub fn clone_without_properties(&self) -> Self {
         Self {
             id: self.id.clone(),

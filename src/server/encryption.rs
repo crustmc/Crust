@@ -5,7 +5,6 @@ pub struct PacketEncryption {
 }
 
 impl PacketEncryption {
-
     pub fn new(key: &[u8; 16]) -> Self {
         Self {
             cipher: cfb8::Encryptor::new(key.into(), key.into()),
@@ -23,7 +22,6 @@ pub struct PacketDecryption {
 }
 
 impl PacketDecryption {
-
     pub fn new(key: &[u8; 16]) -> Self {
         Self {
             cipher: cfb8::Decryptor::new(key.into(), key.into()),

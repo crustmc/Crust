@@ -1,15 +1,41 @@
-use std::{future::Future, io::Cursor, net::{IpAddr, SocketAddr}, ops::DerefMut, pin::Pin, sync::Arc};
+use std::{
+    future::Future,
+    io::Cursor,
+    net::{IpAddr, SocketAddr},
+    ops::DerefMut,
+    pin::Pin,
+    sync::Arc,
+};
 
 use rand::RngCore;
 use rsa::{Pkcs1v15Encrypt, RsaPublicKey};
 use tokio::net::{TcpStream, ToSocketAddrs};
 use uuid::Uuid;
 
-use crate::{auth::GameProfile, chat::Text, server::{encryption::{PacketDecryption, PacketEncryption}, packets::{EncryptionResponse, Kick, Packet}}, util::{IOError, IOErrorKind, VarInt}, version::R1_20_2};
+use crate::{
+    auth::GameProfile,
+    chat::Text,
+    server::{
+        encryption::{PacketDecryption, PacketEncryption},
+        packets::{EncryptionResponse, Kick, Packet},
+    },
+    util::{IOError, IOErrorKind, VarInt},
+    version::R1_20_2,
+};
 
 use self::packets::{LoginAcknowledged, LoginDisconnect, SetCompression};
 
-use super::{packet_handler::ServerPacketHandler, packet_ids::{PacketRegistry, ServerPacketType}, packets::{self, encode_and_send_packet, read_and_decode_packet, CookieRequest, CookieResponse, EncryptionRequest, Handshake, LoginPluginRequest, LoginPluginResponse, LoginRequest, LoginSuccess, PlayerPublicKey, ProtocolState, PROTOCOL_STATE_LOGIN}, proxy_handler::{ClientHandle, ConnectionHandle, PacketSending}, PlayerSyncData, ProxyServer, SlotId};
+use super::{
+    packet_handler::ServerPacketHandler,
+    packet_ids::{PacketRegistry, ServerPacketType},
+    packets::{
+        self, encode_and_send_packet, read_and_decode_packet, CookieRequest, CookieResponse,
+        EncryptionRequest, Handshake, LoginPluginRequest, LoginPluginResponse, LoginRequest,
+        LoginSuccess, PlayerPublicKey, ProtocolState, PROTOCOL_STATE_LOGIN,
+    },
+    proxy_handler::{ClientHandle, ConnectionHandle, PacketSending},
+    PlayerSyncData, ProxyServer, SlotId,
+};
 
 #[derive(Debug)]
 pub enum ConnectError {
@@ -40,13 +66,23 @@ pub struct EstablishedBackend {
     compression_threshold: i32,
     version: i32,
     encryption: Option<(PacketEncryption, PacketDecryption)>,
-    address: SocketAddr
+    address: SocketAddr,
 }
 
 impl EstablishedBackend {
-    
-    pub async fn begin_proxying(self, partner: ClientHandle, sync_data: Arc<PlayerSyncData>) -> (GameProfile, ConnectionHandle) {
-        let Self { profile, stream, compression_threshold, encryption, address, .. } = self;
+    pub async fn begin_proxying(
+        self,
+        partner: ClientHandle,
+        sync_data: Arc<PlayerSyncData>,
+    ) -> (GameProfile, ConnectionHandle) {
+        let Self {
+            profile,
+            stream,
+            compression_threshold,
+            encryption,
+            address,
+            ..
+        } = self;
         let synced_protocol_state = partner.connection.protocol_state.clone();
         let (read, mut write) = stream.into_split();
         let player_id = partner.player_id;
@@ -54,7 +90,7 @@ impl EstablishedBackend {
         let partner_handle = partner.connection.clone();
         let (mut encryption, decryption) = match encryption {
             Some(encryption) => (Some(encryption.0), Some(encryption.1)),
-            None => (None, None)
+            None => (None, None),
         };
 
         let (handle_sender, handle_receiver) = tokio::sync::oneshot::channel::<ConnectionHandle>();
@@ -65,7 +101,14 @@ impl EstablishedBackend {
             let mut decryption = self_handle.decryption.lock().await;
             loop {
                 let mut read_buf = Vec::new();
-                let res = read_and_decode_packet(read.deref_mut(), &mut read_buf, &mut protocol_buf, compression_threshold, &mut decryption).await;
+                let res = read_and_decode_packet(
+                    read.deref_mut(),
+                    &mut read_buf,
+                    &mut protocol_buf,
+                    compression_threshold,
+                    &mut decryption,
+                )
+                    .await;
                 if let Err(_e) = res {
                     self_handle.disconnect().await;
                     break;
@@ -77,11 +120,19 @@ impl EstablishedBackend {
                     break;
                 }
                 let packet_id = packet_id.unwrap().get();
-            
-                let res = ServerPacketHandler::handle_packet(packet_id, &read_buf[VarInt::get_size(packet_id)..],
-                sync_data.version, player_id, &self_handle, &sync_data, &partner.connection).await;
+
+                let res = ServerPacketHandler::handle_packet(
+                    packet_id,
+                    &read_buf[VarInt::get_size(packet_id)..],
+                    sync_data.version,
+                    player_id,
+                    &self_handle,
+                    &sync_data,
+                    &partner.connection,
+                )
+                    .await;
                 if let Err(_e) = &res {
-                       res.unwrap();
+                    res.unwrap();
                     self_handle.disconnect().await;
                     break;
                 }
@@ -100,25 +151,48 @@ impl EstablishedBackend {
             while let Some(event) = receiver.recv().await {
                 match event {
                     PacketSending::Packet(packet, _) => {
-                        if encode_and_send_packet(&mut write, &packet, &mut protocol_buf, compression_threshold, &mut encryption).await.is_err() {
+                        if encode_and_send_packet(
+                            &mut write,
+                            &packet,
+                            &mut protocol_buf,
+                            compression_threshold,
+                            &mut encryption,
+                        )
+                            .await
+                            .is_err()
+                        {
                             // could not forward packet to player, he disconnected
                             break;
                         }
-                    },
+                    }
                     PacketSending::Sync(sender) => {
                         let _ = sender.send(());
-                    },
+                    }
                     _ => {}
                 }
             }
         });
 
-        let mut handle = ConnectionHandle::new("".to_string(), sender, read, ProtocolState::Config, write_task.abort_handle(), compression_threshold, decryption, None, address);
-        
+        let mut handle = ConnectionHandle::new(
+            "".to_string(),
+            sender,
+            read,
+            ProtocolState::Config,
+            write_task.abort_handle(),
+            compression_threshold,
+            decryption,
+            None,
+            address,
+        );
+
         let disconnect_lock = handle.disconnect_wait.clone();
 
         handle.protocol_state = synced_protocol_state; // synchronize protocol state
-        handle.read_task.lock().await.replace(read_task.abort_handle());
+        handle
+            .read_task
+            .lock()
+            .await
+            .replace(read_task.abort_handle());
 
         if handle_sender.send(handle.clone()).is_err() {
             panic!("Failed to send connection handle");
@@ -140,9 +214,15 @@ impl EstablishedBackend {
             }
 
             let mut buf = vec![];
-            packets::get_full_server_packet_buf_write_buffer(&mut buf, &Kick {
-                text: Text::new("§cYou have been kicked, no fallback server found.")
-            }, self.version, handle_.protocol_state()).unwrap();
+            packets::get_full_server_packet_buf_write_buffer(
+                &mut buf,
+                &Kick {
+                    text: Text::new("§cYou have been kicked, no fallback server found."),
+                },
+                self.version,
+                handle_.protocol_state(),
+            )
+                .unwrap();
             partner_handle.queue_packet(buf, true).await;
             partner_handle.sync().await;
             partner_handle.disconnect().await;
@@ -151,8 +231,10 @@ impl EstablishedBackend {
     }
 }
 
-
-fn switch_server_helper(player_id: SlotId, server: SlotId) -> Pin<Box<dyn Future<Output = bool> + Send>>{
+fn switch_server_helper(
+    player_id: SlotId,
+    server: SlotId,
+) -> Pin<Box<dyn Future<Output=bool> + Send>> {
     let block = async move {
         let players = ProxyServer::instance().players().read().await;
         let player = players.get(player_id);
@@ -197,8 +279,18 @@ fn sanitize_address(addr: SocketAddr) -> std::io::Result<String> {
     Ok(address_str)
 }
 
-pub async fn connect<A: ToSocketAddrs>(client_ip: SocketAddr, addr: A, hs_host: String, hs_port: u16, mut profile: GameProfile, player_public_key: Option<PlayerPublicKey>, version: i32) -> Result<EstablishedBackend, ConnectError> {
-    let mut stream = TcpStream::connect(addr).await.map_err(ConnectError::SocketConnectError)?;
+pub async fn connect<A: ToSocketAddrs>(
+    client_ip: SocketAddr,
+    addr: A,
+    hs_host: String,
+    hs_port: u16,
+    mut profile: GameProfile,
+    player_public_key: Option<PlayerPublicKey>,
+    version: i32,
+) -> Result<EstablishedBackend, ConnectError> {
+    let mut stream = TcpStream::connect(addr)
+        .await
+        .map_err(ConnectError::SocketConnectError)?;
     let address = stream.peer_addr().map_err(ConnectError::IO)?;
 
     let mut write_buf = Vec::new();
@@ -209,97 +301,221 @@ pub async fn connect<A: ToSocketAddrs>(client_ip: SocketAddr, addr: A, hs_host: 
 
     let mut host = hs_host;
     if ProxyServer::instance().config().spigot_forward {
-        host = format!("{}\0{}\0{}", &host, sanitize_address(client_ip).map_err(ConnectError::IO)?, profile.id );
+        host = format!(
+            "{}\0{}\0{}",
+            &host,
+            sanitize_address(client_ip).map_err(ConnectError::IO)?,
+            profile.id
+        );
         if profile.properties.len() > 0 {
-            host = format!("{}\0{}", &host, serde_json::to_string(&profile.properties).unwrap());
+            host = format!(
+                "{}\0{}",
+                &host,
+                serde_json::to_string(&profile.properties).unwrap()
+            );
         }
     };
 
-    packets::get_full_client_packet_buf_write_buffer(&mut write_buf, &Handshake {
+    packets::get_full_client_packet_buf_write_buffer(
+        &mut write_buf,
+        &Handshake {
+            version,
+            host,
+            port: hs_port,
+            next_state: PROTOCOL_STATE_LOGIN,
+        },
         version,
-        host: host,
-        port: hs_port,
-        next_state: PROTOCOL_STATE_LOGIN,
-    }, version, ProtocolState::Handshake).unwrap();
-    encode_and_send_packet(&mut stream, &write_buf, &mut protocol_buf, compression_threshold, &mut encryption).await.map_err(ConnectError::IO)?;
+        ProtocolState::Handshake,
+    )
+        .unwrap();
+    encode_and_send_packet(
+        &mut stream,
+        &write_buf,
+        &mut protocol_buf,
+        compression_threshold,
+        &mut encryption,
+    )
+        .await
+        .map_err(ConnectError::IO)?;
 
-    packets::get_full_client_packet_buf_write_buffer(&mut write_buf, &LoginRequest {
-        name: profile.name.clone(),
-        uuid: Some(Uuid::parse_str(&profile.id).unwrap()),
-        public_key: player_public_key,
-    }, version, ProtocolState::Login).unwrap();
-    encode_and_send_packet(&mut stream, &write_buf, &mut protocol_buf, compression_threshold, &mut encryption).await.map_err(ConnectError::IO)?;
+    packets::get_full_client_packet_buf_write_buffer(
+        &mut write_buf,
+        &LoginRequest {
+            name: profile.name.clone(),
+            uuid: Some(Uuid::parse_str(&profile.id).unwrap()),
+            public_key: player_public_key,
+        },
+        version,
+        ProtocolState::Login,
+    )
+        .unwrap();
+    encode_and_send_packet(
+        &mut stream,
+        &write_buf,
+        &mut protocol_buf,
+        compression_threshold,
+        &mut encryption,
+    )
+        .await
+        .map_err(ConnectError::IO)?;
 
     let mut read_buf = Vec::new();
     loop {
-        read_and_decode_packet(&mut stream, &mut read_buf, &mut protocol_buf, compression_threshold, &mut decryption).await.map_err(ConnectError::IO)?;
+        read_and_decode_packet(
+            &mut stream,
+            &mut read_buf,
+            &mut protocol_buf,
+            compression_threshold,
+            &mut decryption,
+        )
+            .await
+            .map_err(ConnectError::IO)?;
         let mut reader = Cursor::new(&read_buf);
-        let packet_id = VarInt::decode_simple(&mut reader).map_err(ConnectError::IO)?.get();
+        let packet_id = VarInt::decode_simple(&mut reader)
+            .map_err(ConnectError::IO)?
+            .get();
         write_buf.clear();
-        let packet_type = PacketRegistry::instance().get_server_packet_type(ProtocolState::Login, version, packet_id);
+        let packet_type = PacketRegistry::instance().get_server_packet_type(
+            ProtocolState::Login,
+            version,
+            packet_id,
+        );
         if let Some(packet_type) = packet_type {
             match packet_type {
                 ServerPacketType::LoginDisconnect => {
-                    let disconnect = LoginDisconnect::decode(&mut reader, version).map_err(ConnectError::IO)?;
+                    let disconnect =
+                        LoginDisconnect::decode(&mut reader, version).map_err(ConnectError::IO)?;
                     return Err(ConnectError::Kicked(disconnect.text.get_string()));
                 }
                 ServerPacketType::EncryptionRequest => {
-                    let enc_request = EncryptionRequest::decode(&mut reader, version).map_err(ConnectError::IO)?;
+                    let enc_request = EncryptionRequest::decode(&mut reader, version)
+                        .map_err(ConnectError::IO)?;
                     if enc_request.should_authenticate {
                         return Err(ConnectError::ServerInOnlineMode);
                     }
-    
+
                     use rsa::pkcs8::DecodePublicKey;
-    
+
                     let public_key = RsaPublicKey::from_public_key_der(&enc_request.public_key)
                         .map_err(|_| ConnectError::InvalidPublicKeyFormat)?;
-    
+
                     let mut secret_key = [0u8; 16];
                     rand::thread_rng().fill_bytes(&mut secret_key);
-    
-                    let encrypted_secret_key = public_key.encrypt(&mut rand::thread_rng(), Pkcs1v15Encrypt, &secret_key).unwrap();
-                    let encrypted_verify_token = public_key.encrypt(&mut rand::thread_rng(), Pkcs1v15Encrypt, &enc_request.verify_token).unwrap();
-                    
-                    VarInt(1).encode(&mut write_buf, 5).map_err(ConnectError::IO)?; // Encryption response packet id
-                    packets::get_full_client_packet_buf_write_buffer(&mut write_buf, &EncryptionResponse {
-                        shared_secret: encrypted_secret_key,
-                        verify_token: Some(encrypted_verify_token),
-                        encryption_data: None,
-                    }, version, ProtocolState::Login).unwrap();
-                    encode_and_send_packet(&mut stream, &write_buf, &mut protocol_buf, compression_threshold, &mut encryption).await.map_err(ConnectError::IO)?;
-    
+
+                    let encrypted_secret_key = public_key
+                        .encrypt(&mut rand::thread_rng(), Pkcs1v15Encrypt, &secret_key)
+                        .unwrap();
+                    let encrypted_verify_token = public_key
+                        .encrypt(
+                            &mut rand::thread_rng(),
+                            Pkcs1v15Encrypt,
+                            &enc_request.verify_token,
+                        )
+                        .unwrap();
+
+                    VarInt(1)
+                        .encode(&mut write_buf, 5)
+                        .map_err(ConnectError::IO)?; // Encryption response packet id
+                    packets::get_full_client_packet_buf_write_buffer(
+                        &mut write_buf,
+                        &EncryptionResponse {
+                            shared_secret: encrypted_secret_key,
+                            verify_token: Some(encrypted_verify_token),
+                            encryption_data: None,
+                        },
+                        version,
+                        ProtocolState::Login,
+                    )
+                        .unwrap();
+                    encode_and_send_packet(
+                        &mut stream,
+                        &write_buf,
+                        &mut protocol_buf,
+                        compression_threshold,
+                        &mut encryption,
+                    )
+                        .await
+                        .map_err(ConnectError::IO)?;
+
                     encryption = Some(PacketEncryption::new(&secret_key));
                     decryption = Some(PacketDecryption::new(&secret_key));
-                },
+                }
                 ServerPacketType::LoginSuccess => {
-                    let login_success = LoginSuccess::decode(&mut reader, version).map_err(ConnectError::IO)?;
+                    let login_success =
+                        LoginSuccess::decode(&mut reader, version).map_err(ConnectError::IO)?;
                     profile = login_success.profile;
                     if version >= R1_20_2 {
-                        packets::get_full_client_packet_buf_write_buffer(&mut write_buf, &LoginAcknowledged, version, ProtocolState::Login).unwrap();
-                        encode_and_send_packet(&mut stream, &write_buf, &mut protocol_buf, compression_threshold, &mut encryption).await.map_err(ConnectError::IO)?;
+                        packets::get_full_client_packet_buf_write_buffer(
+                            &mut write_buf,
+                            &LoginAcknowledged,
+                            version,
+                            ProtocolState::Login,
+                        )
+                            .unwrap();
+                        encode_and_send_packet(
+                            &mut stream,
+                            &write_buf,
+                            &mut protocol_buf,
+                            compression_threshold,
+                            &mut encryption,
+                        )
+                            .await
+                            .map_err(ConnectError::IO)?;
                     }
                     break;
-                },
+                }
                 ServerPacketType::SetCompression => {
-                    compression_threshold = SetCompression::decode(&mut reader, version).map_err(ConnectError::IO)?.compression;
-                },
-                 ServerPacketType::LoginPluginRequest => {
-                    let payload = LoginPluginRequest::decode(&mut reader, version).map_err(ConnectError::IO)?;
-                    packets::get_full_client_packet_buf_write_buffer(&mut write_buf, &LoginPluginResponse {
-                        id: payload.id,
-                        data: None,
-                    }, version, ProtocolState::Login).unwrap();
-                    encode_and_send_packet(&mut stream, &write_buf, &mut protocol_buf, compression_threshold, &mut encryption).await.map_err(ConnectError::IO)?;
-                 },
-                 ServerPacketType::CookieRequest => {
-                    let cookie_request = CookieRequest::decode(&mut reader, version).map_err(ConnectError::IO)?;
-                    packets::get_full_client_packet_buf_write_buffer(&mut write_buf, &CookieResponse {
-                        cookie: cookie_request.cookie,
-                        data: None,
-                    }, version, ProtocolState::Login).unwrap();
-                    encode_and_send_packet(&mut stream, &write_buf, &mut protocol_buf, compression_threshold, &mut encryption).await.map_err(ConnectError::IO)?;
-                 }
-                _ => {},
+                    compression_threshold = SetCompression::decode(&mut reader, version)
+                        .map_err(ConnectError::IO)?
+                        .compression;
+                }
+                ServerPacketType::LoginPluginRequest => {
+                    let payload = LoginPluginRequest::decode(&mut reader, version)
+                        .map_err(ConnectError::IO)?;
+                    packets::get_full_client_packet_buf_write_buffer(
+                        &mut write_buf,
+                        &LoginPluginResponse {
+                            id: payload.id,
+                            data: None,
+                        },
+                        version,
+                        ProtocolState::Login,
+                    )
+                        .unwrap();
+                    encode_and_send_packet(
+                        &mut stream,
+                        &write_buf,
+                        &mut protocol_buf,
+                        compression_threshold,
+                        &mut encryption,
+                    )
+                        .await
+                        .map_err(ConnectError::IO)?;
+                }
+                ServerPacketType::CookieRequest => {
+                    let cookie_request =
+                        CookieRequest::decode(&mut reader, version).map_err(ConnectError::IO)?;
+                    packets::get_full_client_packet_buf_write_buffer(
+                        &mut write_buf,
+                        &CookieResponse {
+                            cookie: cookie_request.cookie,
+                            data: None,
+                        },
+                        version,
+                        ProtocolState::Login,
+                    )
+                        .unwrap();
+                    encode_and_send_packet(
+                        &mut stream,
+                        &write_buf,
+                        &mut protocol_buf,
+                        compression_threshold,
+                        &mut encryption,
+                    )
+                        .await
+                        .map_err(ConnectError::IO)?;
+                }
+                _ => {}
             }
         }
     }
@@ -315,6 +531,6 @@ pub async fn connect<A: ToSocketAddrs>(client_ip: SocketAddr, addr: A, hs_host: 
         compression_threshold,
         version,
         encryption,
-        address
+        address,
     })
 }

@@ -53,7 +53,6 @@ pub struct ServerConfig {
 }
 
 impl Default for ProxyConfig {
-
     fn default() -> Self {
         Self {
             bind_address: "0.0.0.0:25577".to_owned(),
@@ -74,7 +73,7 @@ impl Default for ProxyConfig {
                     address: "127.0.0.1:25565".to_owned(),
                 }
             ],
-            priorities: vec!["lobby".to_owned()]
+            priorities: vec!["lobby".to_owned()],
         }
     }
 }
@@ -92,12 +91,11 @@ pub struct ServerList {
 }
 
 impl ServerList {
-
     pub fn get_priorities(&self) -> &[String] {
         &self.priorities
     }
 
-    pub fn all_servers(&self) -> impl Iterator<Item = (SlotId, &ServerInfo)> {
+    pub fn all_servers(&self) -> impl Iterator<Item=(SlotId, &ServerInfo)> {
         self.servers.iter()
     }
 
@@ -137,7 +135,7 @@ impl ServerList {
         false
     }
 
-    pub fn list_servers(&self) -> impl Iterator<Item = &ServerInfo> {
+    pub fn list_servers(&self) -> impl Iterator<Item=&ServerInfo> {
         self.servers.values()
     }
 }
@@ -157,7 +155,6 @@ pub struct ProxyServer {
 static mut INSTANCE: Option<ProxyServer> = None;
 
 impl ProxyServer {
-
     #[inline]
     pub fn config(&self) -> &ProxyConfig {
         &self.config
@@ -211,13 +208,13 @@ pub fn run_server() {
                     Err(e) => {
                         log::error!("Failed to parse config: {}", e);
                         return;
-                    },
+                    }
                 }
-            },
+            }
             Err(e) => {
                 log::error!("Failed to read config: {}", e);
                 return;
-            },
+            }
         }
     };
 
@@ -237,11 +234,11 @@ pub fn run_server() {
                         let base64 = String::from("data:image/png;base64,") + &base64::engine::general_purpose::STANDARD.encode(&png_bytes);
                         Some(base64)
                     }
-                },
+                }
                 Err(e) => {
                     log::error!("Failed to load favicon: {}", e);
                     None
-                },
+                }
             }
         } else {
             log::error!("Favicon path is not a valid file! Skipping icon...");
@@ -345,11 +342,10 @@ pub struct ProxiedPlayer {
 }
 
 impl ProxiedPlayer {
-
     pub async fn send_message(&self, message: Text) -> IOResult<()> {
         let chat = SystemChatMessage {
             message,
-            pos: 0
+            pos: 0,
         };
         let data = packets::get_full_server_packet_buf(&chat, self.protocol_version, self.client_handle.protocol_state())?;
         if let Some(data) = data {
@@ -364,7 +360,7 @@ impl ProxiedPlayer {
 
     pub async fn switch_server(&self, server_id: SlotId) -> Option<JoinHandle<bool>> {
         let sync_data = self.sync_data.clone();
-        
+
         if let Err(true) = sync_data.is_switching_server.compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed) {
             return None;
         }
@@ -385,7 +381,7 @@ impl ProxiedPlayer {
                 let server = server.unwrap();
                 (server.address.clone(), server.label.clone())
             };
-            
+
             let username = profile.name.clone();
             let backend = backend::connect(handle.address, addr, "127.0.0.1".to_string(), 25565, profile, public_key, version).await;
             if let Err(e) = backend {
@@ -397,7 +393,7 @@ impl ProxiedPlayer {
                 }
                 drop(players);
 
-                
+
                 return false;
             }
             let backend = backend.unwrap();
@@ -433,13 +429,14 @@ impl ProxiedPlayer {
             if let Some(packet) = settings.as_ref() {
                 if let Some(data) = packets::get_full_client_packet_buf(packet, version, handle.protocol_state()).unwrap() {
                     if !server_handle.queue_packet(data, true).await {
+                        drop(settings);
                         sync_data.is_switching_server.store(false, Ordering::Relaxed);
                         return false;
                     }
                 }
             }
             drop(settings);
-            
+
             let display_name = format!("[{} - {}]", username, server_name);
 
             handle.spawn_read_task(false, display_name, server_handle.clone(), player_id, version).await;
@@ -449,10 +446,11 @@ impl ProxiedPlayer {
                 player.current_server = server_id;
                 player.server_handle = Some(server_handle);
                 player.profile = profile;
+                drop(players);
             } else {
+                drop(players);
                 server_handle.disconnect().await;
             }
-            drop(players);
             sync_data.is_switching_server.store(false, Ordering::Relaxed);
             true
         });

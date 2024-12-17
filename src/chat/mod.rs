@@ -1,7 +1,6 @@
-
 mod json;
 
-pub use json::{serialize_json, serialize_style, deserialize_json, deserialize_style};
+pub use json::{deserialize_json, serialize_json};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Text {
@@ -14,7 +13,6 @@ pub struct Text {
 }
 
 impl Text {
-
     pub fn new<T: Into<TextContent>>(content: T) -> Self {
         Text {
             content: content.into(),
@@ -30,7 +28,7 @@ impl Text {
         self.extra.push(extra.into());
     }
 
-    pub fn add_extras<T: Into<Text>, E: IntoIterator<Item = T>>(&mut self, extras: E) {
+    pub fn add_extras<T: Into<Text>, E: IntoIterator<Item=T>>(&mut self, extras: E) {
         self.extra.extend(extras.into_iter().map(Into::into));
     }
 
@@ -60,14 +58,12 @@ impl Text {
 }
 
 impl<T: Into<TextContent>> From<T> for Text {
-    
     fn from(content: T) -> Self {
         Text::new(content)
     }
 }
 
 impl From<TextBuilder> for Text {
-    
     fn from(builder: TextBuilder) -> Self {
         builder.build()
     }
@@ -91,7 +87,6 @@ pub enum TextContent {
 }
 
 impl TextContent {
-
     pub fn literal(text: String) -> Self {
         TextContent::Literal(text)
     }
@@ -113,7 +108,7 @@ impl TextContent {
     }
 
     pub fn nbt(nbt: String, interpret: Option<bool>, separator: Option<Text>,
-        block: Option<String>, entity: Option<String>, storage: Option<String>) -> Self {
+               block: Option<String>, entity: Option<String>, storage: Option<String>) -> Self {
         TextContent::Nbt { nbt, interpret, separator: separator.map(Box::new), block, entity, storage }
     }
 
@@ -127,14 +122,12 @@ impl TextContent {
 }
 
 impl From<String> for TextContent {
-    
     fn from(text: String) -> Self {
         TextContent::Literal(text)
     }
 }
 
 impl From<&str> for TextContent {
-    
     fn from(text: &str) -> Self {
         TextContent::Literal(text.to_string())
     }
@@ -178,7 +171,6 @@ pub struct Style {
 }
 
 impl Style {
-
     #[inline]
     pub fn empty() -> Self {
         Self::default()
@@ -186,8 +178,8 @@ impl Style {
 
     pub fn is_empty(&self) -> bool {
         self.color.is_none() && self.shadow_color.is_none() && self.bold.is_none() &&
-        self.italic.is_none() && self.underlined.is_none() && self.strikethrough.is_none() &&
-        self.obfuscated.is_none()
+            self.italic.is_none() && self.underlined.is_none() && self.strikethrough.is_none() &&
+            self.obfuscated.is_none()
     }
 
     pub fn with_color<C: Into<TextColor>>(mut self, color: C) -> Self {
@@ -293,7 +285,6 @@ pub enum TextColor {
 }
 
 impl TextColor {
-
     pub fn get_rgb(&self) -> u32 {
         match self {
             TextColor::Hex(color) => *color,
@@ -322,28 +313,24 @@ impl TextColor {
 }
 
 impl From<u32> for TextColor {
-    
     fn from(color: u32) -> Self {
         TextColor::Hex(color)
     }
 }
 
 impl From<i32> for TextColor {
-    
     fn from(color: i32) -> Self {
         TextColor::Hex(color as u32)
     }
 }
 
 impl From<[u8; 3]> for TextColor {
-    
     fn from(color: [u8; 3]) -> Self {
         TextColor::from_rgb(color[0], color[1], color[2])
     }
 }
 
 impl From<(u8, u8, u8)> for TextColor {
-    
     fn from(color: (u8, u8, u8)) -> Self {
         TextColor::from_rgb(color.0, color.1, color.2)
     }
@@ -355,7 +342,6 @@ pub struct TextBuilder {
 }
 
 impl TextBuilder {
-
     pub fn new<T: Into<TextContent>>(content: T) -> Self {
         Self {
             inner: Text::new(content),
@@ -372,12 +358,12 @@ impl TextBuilder {
         self
     }
 
-    pub fn extras<T: Into<Text>, E: IntoIterator<Item = T>>(mut self, extras: E) -> Self {
+    pub fn extras<T: Into<Text>, E: IntoIterator<Item=T>>(mut self, extras: E) -> Self {
         self.inner.extra.extend(extras.into_iter().map(Into::into));
         self
     }
 
-    pub fn add_extras<T: Into<Text>, E: IntoIterator<Item = T>>(&mut self, extras: E) -> &mut Self {
+    pub fn add_extras<T: Into<Text>, E: IntoIterator<Item=T>>(&mut self, extras: E) -> &mut Self {
         self.inner.extra.extend(extras.into_iter().map(Into::into));
         self
     }

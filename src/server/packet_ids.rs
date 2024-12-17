@@ -9,7 +9,6 @@ use super::packets::ProtocolState;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum ServerPacketType {
-
     LoginDisconnect, // login disconnected
 
     EncryptionRequest, // login
@@ -28,8 +27,6 @@ pub enum ServerPacketType {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum ClientPacketType {
-
-
     Handshake,
 
     LoginRequest,
@@ -58,7 +55,6 @@ lazy_static! {
 
 #[allow(dead_code)]
 impl PacketRegistry {
-
     #[inline]
     pub fn instance() -> &'static Self {
         &PACKET_REGISTRY
@@ -127,14 +123,14 @@ impl PacketRegistry {
                 )*
             }};
         }
-        {// Handshake
+        { // Handshake
             begin! {
                 Client, Handshake, Handshake;
                 (R1_8, 0x00)
             }
         }
 
-        {// Login
+        { // Login
             begin! {
                 Client, Login, LoginRequest;
                 (R1_8, 0x00)
@@ -217,12 +213,12 @@ impl PacketRegistry {
                 (R1_20_2, 0x09)
                 (R1_20_5, 0x0A)
                 (R1_21_2, 0x0C)
-            };
+            }
             begin! {
                 Client, Game, UnsignedClientCommand;
                 (R1_20_5, 0x04)
                 (R1_21_2, 0x05)
-            };
+            }
 
             begin! {
                 Server, Config, CookieRequest;
@@ -234,8 +230,8 @@ impl PacketRegistry {
                 (R1_20_2, 0x0B)
                 (R1_20_5, 0x0C)
                 (R1_21_2, 0x0E)
-            };
-            
+            }
+
             begin! {
                 Server, Game, Kick;
                 (R1_8, 0x40)

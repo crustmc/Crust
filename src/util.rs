@@ -19,13 +19,12 @@ pub fn generate_uuid(username: &str) -> Uuid {
 }
 
 pub fn is_username_valid(username: &str) -> bool {
-    username.len() >= 1 && username.len() <= 16 && username.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+    !username.is_empty() && username.len() <= 16 && username.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
 pub struct VarInt(pub i32);
 
 impl VarInt {
-
     #[inline]
     pub fn get(&self) -> i32 {
         self.0
@@ -36,7 +35,7 @@ impl VarInt {
         let mut bytes = 0;
         loop {
             let b = src.read_u8()? as u32;
-            out |= ( b & 0x7F ) << ( bytes * 7 );
+            out |= (b & 0x7F) << (bytes * 7);
             bytes += 1;
             if bytes > max_bytes {
                 return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "VarInt too big"));
@@ -84,7 +83,7 @@ impl VarInt {
         let mut bytes = 0;
         loop {
             let b = src.read_u8().await? as u32;
-            out |= ( b & 0x7F ) << ( bytes * 7 );
+            out |= (b & 0x7F) << (bytes * 7);
             bytes += 1;
             if bytes > max_bytes {
                 return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "VarInt too big"));
@@ -104,7 +103,7 @@ impl VarInt {
             src.read_exact(&mut buf).await?;
             decrypt.decrypt(&mut buf);
             let b = buf[0] as u32;
-            out |= ( b & 0x7F ) << ( bytes * 7 );
+            out |= (b & 0x7F) << (bytes * 7);
             bytes += 1;
             if bytes > max_bytes {
                 return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "VarInt too big"));
@@ -152,7 +151,7 @@ impl VarInt {
         if (v & 0xF0000000) == 0 {
             return 4;
         }
-        return 5;
+        5
     }
 }
 
@@ -165,16 +164,15 @@ impl Deref for VarInt {
 }
 
 impl DerefMut for VarInt {
-
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
 }
 
 impl<T> From<T> for VarInt
-    where T: Into<i32>
+where
+    T: Into<i32>,
 {
-
     fn from(value: T) -> Self {
         VarInt(value.into())
     }
@@ -183,7 +181,6 @@ impl<T> From<T> for VarInt
 pub struct EncodingHelper(());
 
 impl EncodingHelper {
-
     pub fn write_byte_array<W: Write + ?Sized>(dest: &mut W, data: &[u8]) -> IOResult<()> {
         let len = VarInt(data.len() as i32);
         len.encode(dest, 5)?;
@@ -215,7 +212,7 @@ impl EncodingHelper {
         }
         let mut data = vec![0; len];
         src.read_exact(&mut data)?;
-        Ok(String::from_utf8(data).map_err(|e| IOError::new(IOErrorKind::InvalidData, e))?)
+        String::from_utf8(data).map_err(|e| IOError::new(IOErrorKind::InvalidData, e))
     }
 
     pub fn write_uuid<W: Write + ?Sized>(dest: &mut W, uuid: &Uuid) -> IOResult<()> {

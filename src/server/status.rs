@@ -1,3 +1,4 @@
+use std::fmt::Display;
 use serde::Serialize;
 
 use super::ProxyServer;
@@ -26,10 +27,9 @@ pub struct StatusResponse {
     pub favicon: Option<String>,
 }
 
-impl ToString for StatusResponse {
-
-    fn to_string(&self) -> String {
-        serde_json::to_string(self).unwrap()
+impl Display for StatusResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", serde_json::to_string(self).unwrap())
     }
 }
 

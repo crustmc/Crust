@@ -65,7 +65,7 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
         packets::get_full_server_packet_buf_write_buffer(&mut buf, &Kick {
             text: Text::new("§cNo server found for you to connect")
         }, data.version, data.protocol_state).unwrap();
-        encode_and_send_packet(&mut stream, &mut buf, &mut vec![], data.compression_threshold, &mut encryption).await.unwrap();
+        encode_and_send_packet(&mut stream, &buf, &mut vec![], data.compression_threshold, &mut encryption).await.unwrap();
         return;
     }
 
@@ -78,7 +78,7 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
         None => (None, None)
     };
     let compression_threshold = data.compression_threshold;
-    
+
     let (sender, mut receiver) = tokio::sync::mpsc::channel(256);
 
     let write_task = tokio::spawn(async move {
@@ -96,37 +96,35 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
                         // TODO: Handle error
                         break;
                     }
-                    
-                },
+                }
                 PacketSending::Sync(sender) => {
                     let _ = sender.send(());
-                },
+                }
                 PacketSending::DropRedundant(drop) => {
                     drop_redundant = drop;
-                },
+                }
                 PacketSending::BundleReceived => {
                     in_bundle = !in_bundle;
-                    if let Err(_e) = encode_and_send_packet(&mut write, &vec![0], &mut protocol_buf, compression_threshold, &mut encryption).await {
+                    if let Err(_e) = encode_and_send_packet(&mut write, &[0], &mut protocol_buf, compression_threshold, &mut encryption).await {
                         break;
                     }
-                }, PacketSending::StartConfig(version) => {
+                }
+                PacketSending::StartConfig(version) => {
                     if in_bundle {
                         in_bundle = !in_bundle;
-                        let bundle_packet: Vec<u8> = vec![0].into();
-                        if let Err(_e) = encode_and_send_packet(&mut write, &bundle_packet, &mut protocol_buf, compression_threshold, &mut encryption).await {
+                        if let Err(_e) = encode_and_send_packet(&mut write, &[0], &mut protocol_buf, compression_threshold, &mut encryption).await {
                             break;
                         }
                     }
                     if let Some(packet_id) = PacketRegistry::instance().get_server_packet_id(ProtocolState::Game, version, ServerPacketType::StartConfiguration) {
                         if let Err(_e) = encode_and_send_packet(&mut write, &{
-                                                    let mut packet = vec![];
-                                                    VarInt(packet_id).encode(&mut packet, 5).unwrap();
-                                                    packet
-                                                }, &mut protocol_buf, compression_threshold, &mut encryption).await {
+                            let mut packet = vec![];
+                            VarInt(packet_id).encode(&mut packet, 5).unwrap();
+                            packet
+                        }, &mut protocol_buf, compression_threshold, &mut encryption).await {
                             break;
                         }
-                     }
-
+                    }
                 }
             }
         }
@@ -142,7 +140,11 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
     let disconnect_lock = handle.disconnect_wait.clone();
 
     let player = ProxiedPlayer {
-        player_id: unsafe { #[allow(invalid_value)] core::mem::MaybeUninit::zeroed().assume_init() },
+        player_id: unsafe {
+            #[allow(
+                invalid_value
+            )] core::mem::MaybeUninit::zeroed().assume_init()
+        },
         client_handle: handle.clone(),
         current_server: server_id,
         profile: data.profile,
@@ -154,40 +156,37 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
     let player_id = {
         let mut players = ProxyServer::instance().players().write().await;
         let player_id = players.insert(player);
-        *unsafe {core::mem::transmute::<_, &mut usize>(&ProxyServer::instance().player_count as *const usize)} += 1;
+        *unsafe { core::mem::transmute::<_, &mut usize>(&ProxyServer::instance().player_count as *const usize) } += 1;
         players.get_mut(player_id).unwrap().player_id = player_id;
         drop(players);
         player_id
     };
 
     let handle = ClientHandle {
-        player_id: player_id,
+        player_id,
         connection: handle,
     };
     let con_handle = handle.connection.clone();
     let (_backend_profile, backend_handle) = backend.begin_proxying(handle, player_sync_data).await;
-    
+
     tokio::spawn(async move {
         let disconnect_guard = disconnect_lock.write().await;
         let _ = write_task.await;
-        let mut player_write_lock = ProxyServer::instance().players().write().await;
-        let player = player_write_lock.remove(player_id);
-        if player.is_some() {
-            *unsafe {core::mem::transmute::<_, &mut usize>(&ProxyServer::instance().player_count as *const usize)} -= 1;
-        } else {
-            panic!("Tried to remove player that is for whatever reason not in the player list! This is not intended to happen!");
-        }
-        drop(player_write_lock);
-        if let Some(player) = player {
+        let mut lock = ProxyServer::instance().players().write().await;
+        if let Some(player) = lock.remove(player_id) {
+            *unsafe { core::mem::transmute::<_, &mut usize>(&ProxyServer::instance().player_count as *const usize) } -= 1;
+            drop(lock);
             if let Some(ref backend_handle) = player.server_handle {
                 backend_handle.disconnect().await;
             }
+        } else {
+            panic!("Tried to remove player that is for whatever reason not in the player list! This is not intended to happen!");
         }
         drop(disconnect_guard);
     });
     let mut lock = ProxyServer::instance().players().write().await;
     if let Some(player) = lock.get_mut(player_id) {
-        player.server_handle = Some(backend_handle.clone());        
+        player.server_handle = Some(backend_handle.clone());
     } else {
         return;
     }
@@ -213,7 +212,7 @@ async fn read_task(packet_limit: bool, display_name: String, partner: Connection
         }
 
         if packet_limit {
-            packet_per_second+=1;
+            packet_per_second += 1;
             if packet_per_second >= 2000 {
                 if let Ok(elapsed) = last_second.elapsed() {
                     if elapsed.as_millis() < 1000 {
@@ -235,7 +234,7 @@ async fn read_task(packet_limit: bool, display_name: String, partner: Connection
         }
         let packet_id = packet_id.unwrap().get();
         let res = ClientPacketHandler::handle_packet(packet_id, &read_buf[VarInt::get_size(packet_id)..],
-            version, player_id, &self_handle, &sync_data).await;
+                                                     version, player_id, &self_handle, &sync_data).await;
         if let Err(_e) = res {
             partner.disconnect().await;
             self_handle.disconnect().await;
@@ -254,7 +253,7 @@ pub(crate) enum PacketSending {
     Sync(tokio::sync::oneshot::Sender<()>),
     DropRedundant(bool),
     BundleReceived,
-    StartConfig(i32)
+    StartConfig(i32),
 }
 
 #[derive(Clone)]
@@ -274,9 +273,8 @@ pub struct ConnectionHandle {
 
 
 impl ConnectionHandle {
-
     pub(crate) fn new(name: String, sender: Sender<PacketSending>, reader: OwnedReadHalf, protocol_state: ProtocolState, write_task: AbortHandle,
-        compression_threshold: i32, decryption: Option<PacketDecryption>, sync_data: Option<Arc<PlayerSyncData>>, address: SocketAddr) -> Self {
+                      compression_threshold: i32, decryption: Option<PacketDecryption>, sync_data: Option<Arc<PlayerSyncData>>, address: SocketAddr) -> Self {
         Self {
             name,
             sender,
@@ -288,7 +286,7 @@ impl ConnectionHandle {
             protocol_state: Arc::new(AtomicU8::new(protocol_state as u8)),
             disconnect_wait: Arc::new(RwLock::new(())),
             sync_data,
-            address
+            address,
         }
     }
 
@@ -302,7 +300,7 @@ impl ConnectionHandle {
         self.protocol_state.store(state as u8, Ordering::Relaxed);
     }
 
-    pub(crate) async fn spawn_read_task(&self, packet_limiter: bool,display_name: String, partner: ConnectionHandle, player_id: SlotId, version: i32) {
+    pub(crate) async fn spawn_read_task(&self, packet_limiter: bool, display_name: String, partner: ConnectionHandle, player_id: SlotId, version: i32) {
         let mut old_read_task = self.read_task.lock().await;
         if old_read_task.is_some() {
             panic!("Read task already running!");

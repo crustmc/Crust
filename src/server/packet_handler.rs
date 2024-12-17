@@ -1,6 +1,6 @@
 use std::{future::Future, io::Cursor, pin::Pin, sync::{atomic::Ordering, Arc}};
 
-use crate::{chat::{Text, TextContent}, server::{packets::{self, Packet}, ProxyServer}, util::{IOResult, VarInt}};
+use crate::{chat::Text, server::{packets::{self, Packet}, ProxyServer}, util::IOResult};
 
 use self::commands::Command;
 
@@ -9,23 +9,22 @@ use super::{commands, packet_ids::{ClientPacketType, PacketRegistry, ServerPacke
 pub struct ClientPacketHandler;
 
 impl ClientPacketHandler {
-
     pub async fn handle_packet(packet_id: i32, buffer: &[u8], version: i32, player_id: SlotId, client_handle: &ConnectionHandle, sync_data: &Arc<PlayerSyncData>) -> IOResult<bool> {
         match PacketRegistry::instance().get_client_packet_type(client_handle.protocol_state(), version, packet_id) {
             Some(packet_type) => match packet_type {
                 ClientPacketType::FinishConfiguration => {
                     client_handle.set_protocol_state(ProtocolState::Game);
-                },
+                }
                 ClientPacketType::ConfigurationAck => {
                     client_handle.set_protocol_state(ProtocolState::Config);
                     if sync_data.is_switching_server.load(Ordering::Relaxed) {
                         sync_data.config_ack_notify.notify_one();
                     }
-                },
+                }
                 ClientPacketType::ClientSettings => {
                     let packet = ClientSettings::decode(&mut Cursor::new(buffer), version)?;
                     *sync_data.client_settings.lock().await = Some(packet);
-                },
+                }
                 ClientPacketType::UnsignedClientCommand => {
                     let packet = UnsignedClientCommand::decode(&mut Cursor::new(buffer), version)?;
                     let line = packet.message;
@@ -38,22 +37,20 @@ impl ClientPacketHandler {
                             "server" => {
                                 commands::CommandServer::execute(player_id, split).await;
                                 return Ok(false);
-                            },
-                            _ => {
-                                
                             }
+                            _ => {}
                         }
                     }
-                },
+                }
                 _ => {}
             },
-            None => {},
+            None => {}
         }
         Ok(true)
     }
 }
 
-pub fn switch_server_helper(player: SlotId, server_id: SlotId) -> Pin<Box<dyn Future<Output = ()> + Send>>{
+pub fn switch_server_helper(player: SlotId, server_id: SlotId) -> Pin<Box<dyn Future<Output=()> + Send>> {
     let block = async move {
         let players = ProxyServer::instance().players().read().await;
         if let Some(player) = players.get(player) {
@@ -61,7 +58,7 @@ pub fn switch_server_helper(player: SlotId, server_id: SlotId) -> Pin<Box<dyn Fu
                 player.send_message(Text::new("§cYou're already connected to this server")).await.ok();
                 return;
             }
-            player.switch_server(server_id).await;            
+            player.switch_server(server_id).await;
         }
     };
     Box::pin(block)
@@ -71,34 +68,20 @@ pub fn switch_server_helper(player: SlotId, server_id: SlotId) -> Pin<Box<dyn Fu
 pub struct ServerPacketHandler;
 
 impl ServerPacketHandler {
-
     pub async fn handle_packet(packet_id: i32, buffer: &[u8], version: i32, _player_id: SlotId, server_handle: &ConnectionHandle, _: &Arc<PlayerSyncData>, client_handle: &ConnectionHandle) -> IOResult<bool> {
         match PacketRegistry::instance().get_server_packet_type(server_handle.protocol_state(), version, packet_id) {
             Some(packet_type) => match packet_type {
                 ServerPacketType::BundleDelimiter => {
                     client_handle.on_bundle().await;
                     return Ok(false);
-                },
-                /*ServerPacketType::SystemChatMessage => {
-                    let mut message = SystemChatMessage::decode(&mut Cursor::new(buffer), version)?;
-                    
-                    message.message.add_extra(crate::chat::Text::new(TextContent::literal("sdfsdf".to_owned())));
-                    
-                    let mut packet = Vec::new();
-                    if let Some(packet_id) = PacketRegistry::instance().get_server_packet_id(server_handle.protocol_state(), version, ServerPacketType::SystemChatMessage) {
-                        VarInt(packet_id).encode_simple(&mut packet)?;
-                        message.encode(&mut packet, version)?;
-                        client_handle.queue_packet(packet, false).await;
-                    }
-                    return Ok(true);
-                },*/
+                }
                 ServerPacketType::Kick => {
                     let kick = Kick::decode(&mut Cursor::new(buffer), version)?;
                     let state = server_handle.protocol_state();
                     if state == ProtocolState::Game {
                         let chat = SystemChatMessage {
                             message: kick.text,
-                            pos: 0
+                            pos: 0,
                         };
                         let data = packets::get_full_server_packet_buf(&chat, version, state)?;
                         if let Some(data) = data {
@@ -107,11 +90,9 @@ impl ServerPacketHandler {
                     }
                     return Ok(false);
                 }
-                _ => {
-                
-                }
+                _ => {}
             },
-            None => {},
+            None => {}
         }
         Ok(true)
     }
