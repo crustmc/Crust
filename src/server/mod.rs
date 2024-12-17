@@ -201,7 +201,7 @@ impl ProxyServer {
 }
 
 pub fn run_server() {
-    log::info!("Starting {}...", get_full_name());
+    log::info!("Starting {}..", get_full_name());
     let config_path = Path::new("config.json");
     let config = if !config_path.exists() {
         let default_config = ProxyConfig::default();
