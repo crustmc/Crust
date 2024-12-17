@@ -29,8 +29,21 @@ After the server is started for the first time a config.json file will be create
 Right now you need to restart to apply config changes.
 ## Security
 You should firewall your ports or bind you backend servers locally, otherwise someone could join your backend servers.
-## Planned features
+## features
 
-Inject into Commands packet to make our commands tabable.
-
-Add a plugin system with API and events
+- [x] Joining to, forwarding and switching server
+- [x] Packet Limiter
+- [x] Fallback system
+- [x] Simple /server command
+- [x] Compression and encryption support for client and server connections
+- [x] Online and Offline Mode support
+- [x] Spigot data/ip forwarding support
+- [ ] HA-Proxy support
+- [x] de-/serializing NBT
+- [x] de-/serializing Chat components
+- [x] Versioning in binary file
+- [ ] Inject into Commands packet to make our commands tabable.
+- [ ] Add a plugin system with API and events
+- [ ] Permissions
+- [ ] Good Terminal UI
+- [ ] Command system
