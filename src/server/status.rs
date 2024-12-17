@@ -5,15 +5,15 @@ use super::ProxyServer;
 pub fn get_status_response(client_version: i32) -> StatusResponse {
     StatusResponse {
         version: Version {
-            name: "Bertycord 1.20.2 - 1.21.4".to_string(),
+            name: format!("{} {}", crate::server::NAME, crate::version::SUPPORTED_VERSION_RANGE),
             protocol: if crate::version::is_supported(client_version) { client_version } else { -1 },
         },
         players: Players {
-            max: 100,
-            online: 0,
+            max: ProxyServer::instance().config().max_players,
+            online: ProxyServer::instance().player_count as i32,
             sample: None,
         },
-        description: Some("Hello, world!".to_string()),
+        description: Some(ProxyServer::instance().config().motd.clone()),
         favicon: ProxyServer::instance().favicon.clone(),
     }
 }

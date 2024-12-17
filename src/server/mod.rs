@@ -2,6 +2,7 @@ use std::{collections::HashMap, io::Cursor, path::{Path, PathBuf}, sync::{atomic
 
 use base64::Engine;
 use image::{imageops::FilterType, ImageFormat};
+use lazy_static::lazy_static;
 use packets::{PlayerPublicKey, ProtocolState, SystemChatMessage};
 use proxy_handler::{ClientHandle, ConnectionHandle, PlayerSyncData};
 use rsa::{RsaPrivateKey, RsaPublicKey};
@@ -26,19 +27,7 @@ pub(crate) mod nbt;
 pub const NAME: &str = "Crust";
 pub const GIT_COMMIT_ID: &str = env!("GIT_COMMIT");
 pub const JENKINS_BUILD_NUMBER: &str = env!("BUILD_NUMBER");
-
-pub fn get_full_name() -> String {
-    let mut name = NAME.to_owned();
-    if !GIT_COMMIT_ID.is_empty() {
-        name += format!(":{}", GIT_COMMIT_ID).as_str();
-    } else {
-        name += ":unknown";
-    }
-    if !JENKINS_BUILD_NUMBER.is_empty() {
-        name += format!(":{}", JENKINS_BUILD_NUMBER).as_str();
-    }
-    name
-}
+pub const FULL_NAME: &str = env!("FULL_NAME");
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ProxyConfig {
@@ -158,6 +147,7 @@ pub struct ProxyServer {
     rsa_priv_key: RsaPrivateKey,
     rsa_pub_key: RsaPublicKey,
     players: RwLock<SlotMap<SlotId, ProxiedPlayer>>,
+    pub player_count: usize,
     favicon: Option<String>,
 }
 
@@ -201,7 +191,7 @@ impl ProxyServer {
 }
 
 pub fn run_server() {
-    log::info!("Starting {}..", get_full_name());
+    log::info!("Starting {}..", FULL_NAME);
     let config_path = Path::new("config.json");
     let config = if !config_path.exists() {
         let default_config = ProxyConfig::default();
@@ -297,6 +287,7 @@ pub fn run_server() {
             rsa_priv_key: priv_key,
             rsa_pub_key: pub_key,
             servers: RwLock::new(server_list),
+            player_count: 0,
             players: RwLock::new(SlotMap::new()),
             config,
             favicon: icon,

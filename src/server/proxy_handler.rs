@@ -106,19 +106,25 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
                 },
                 PacketSending::BundleReceived => {
                     in_bundle = !in_bundle;
-                    encode_and_send_packet(&mut write, &vec![0], &mut protocol_buf, compression_threshold, &mut encryption).await.unwrap()
+                    if let Err(_e) = encode_and_send_packet(&mut write, &vec![0], &mut protocol_buf, compression_threshold, &mut encryption).await {
+                        break;
+                    }
                 }, PacketSending::StartConfig(version) => {
                     if in_bundle {
                         in_bundle = !in_bundle;
                         let bundle_packet: Vec<u8> = vec![0].into();
-                        encode_and_send_packet(&mut write, &bundle_packet, &mut protocol_buf, compression_threshold, &mut encryption).await.unwrap();
+                        if let Err(_e) = encode_and_send_packet(&mut write, &bundle_packet, &mut protocol_buf, compression_threshold, &mut encryption).await {
+                            break;
+                        }
                     }
                     if let Some(packet_id) = PacketRegistry::instance().get_server_packet_id(ProtocolState::Game, version, ServerPacketType::StartConfiguration) {
-                         encode_and_send_packet(&mut write, &{
-                            let mut packet = vec![];
-                            VarInt(packet_id).encode(&mut packet, 5).unwrap();
-                            packet
-                        }, &mut protocol_buf, compression_threshold, &mut encryption).await.unwrap();
+                        if let Err(_e) = encode_and_send_packet(&mut write, &{
+                                                    let mut packet = vec![];
+                                                    VarInt(packet_id).encode(&mut packet, 5).unwrap();
+                                                    packet
+                                                }, &mut protocol_buf, compression_threshold, &mut encryption).await {
+                            break;
+                        }
                      }
 
                 }
@@ -148,6 +154,7 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
     let player_id = {
         let mut players = ProxyServer::instance().players().write().await;
         let player_id = players.insert(player);
+        *unsafe {core::mem::transmute::<_, &mut usize>(&ProxyServer::instance().player_count as *const usize)} += 1;
         players.get_mut(player_id).unwrap().player_id = player_id;
         drop(players);
         player_id
@@ -165,6 +172,11 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
         let _ = write_task.await;
         let mut player_write_lock = ProxyServer::instance().players().write().await;
         let player = player_write_lock.remove(player_id);
+        if player.is_some() {
+            *unsafe {core::mem::transmute::<_, &mut usize>(&ProxyServer::instance().player_count as *const usize)} -= 1;
+        } else {
+            panic!("Tried to remove player that is for whatever reason not in the player list! This is not intended to happen!");
+        }
         drop(player_write_lock);
         if let Some(player) = player {
             if let Some(ref backend_handle) = player.server_handle {

@@ -43,15 +43,13 @@ pub async fn handle(mut stream: TcpStream, peer_addr: SocketAddr) {
                     return;
                 },
                 PROTOCOL_STATE_LOGIN | PROTOCOL_STATE_TRANSFER => {
-                    handle_login(&mut stream, handshake, &mut buffer, peer_addr).await.unwrap()
-                    /*match handle_login(&mut stream, handshake, &mut buffer, peer_addr).await {
+                    match handle_login(&mut stream, handshake, &mut buffer, peer_addr).await {
                         Ok(state) => state,
                         Err(e) => {
-                            e.
                             log::debug!("[{}] Login state failed: {}", peer_addr, e);
                             return;
                         },
-                    }*/
+                    }
                 },
                 _ => { // invalid state
                     return;
