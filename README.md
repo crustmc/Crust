@@ -36,22 +36,24 @@ You should firewall your ports or bind you backend servers locally, otherwise so
 ## Features
 
 - [x] Joining to, forwarding and switching server
-- [x] Packet Limiter
-- [x] Fallback system
-- [x] Simple /server command
-- [x] Compression and encryption support for client and server connections
-- [x] Online and Offline Mode support
-- [x] Spigot data/ip forwarding support
+- [x] configurable packet limiter
+- [x] configurable fallback system
+- [x] simple /server command
+- [x] compression and encryption support for client and server connections
+- [x] online and Offline Mode support
+- [x] spigot data/ip forwarding support
 - [ ] HA-Proxy support
 - [x] de-/serializing NBT
 - [x] de-/serializing Chat components
-- [x] Versioning in binary file
-- [ ] Inject into Commands packet to make our commands tabable.
-- [ ] Add a plugin system with API and events
-- [ ] Permissions
-- [ ] Good Terminal UI
-- [ ] Command system
-- [ ] Limbo
+- [x] versioning in binary file
+- [ ] inject into Commands packet to make our commands tabable.
+- [ ] add a plugin system with API and events
+- [ ] simple permission system
+- [ ] good terminal UI
+- [ ] command system
+- [ ] limbo
+- [x] configurable connection throttle
+- [x] logging system
 
 ## Build
 
