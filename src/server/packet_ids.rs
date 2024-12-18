@@ -20,8 +20,9 @@ pub enum ServerPacketType {
     Kick, // config, game
     StartConfiguration, // game
     FinishConfiguration, // config
-    BundleDelimiter,
-    SystemChatMessage,
+    BundleDelimiter, // game
+    SystemChatMessage, // game
+    Commands, // game
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -219,12 +220,6 @@ impl PacketRegistry {
                 (R1_20_5, 0x04)
                 (R1_21_2, 0x05)
             }
-
-            begin! {
-                Server, Config, CookieRequest;
-                (R1_20_5, 0x16)
-            }
-
             begin! {
                 Client, Game, ConfigurationAck;
                 (R1_20_2, 0x0B)
@@ -232,6 +227,10 @@ impl PacketRegistry {
                 (R1_21_2, 0x0E)
             }
 
+            begin! {
+                Server, Config, CookieRequest;
+                (R1_20_5, 0x16)
+            }
             begin! {
                 Server, Game, Kick;
                 (R1_8, 0x40)
@@ -267,6 +266,18 @@ impl PacketRegistry {
             begin! {
                 Server, Game, BundleDelimiter;
                 (R1_19_4, 0x00)
+            }
+            begin! {
+                Server, Game, Commands;
+                (R1_13, 0x11)
+                (R1_15, 0x12)
+                (R1_16, 0x11)
+                (R1_16_2, 0x10)
+                (R1_17, 0x12)
+                (R1_19, 0x0F)
+                (R1_19_3, 0x0E)
+                (R1_19_4, 0x10)
+                (R1_20_2, 0x11)
             }
         }
 

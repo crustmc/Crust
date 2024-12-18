@@ -4,7 +4,7 @@ use crate::{chat::Text, server::{packets::{self, Packet}, ProxyServer}, util::IO
 
 use self::commands::Command;
 
-use super::{commands, packet_ids::{ClientPacketType, PacketRegistry, ServerPacketType}, packets::{ClientSettings, Kick, ProtocolState, SystemChatMessage, UnsignedClientCommand}, proxy_handler::ConnectionHandle, PlayerSyncData, SlotId};
+use super::{brigadier::{ArgumentProperty, CommandNode, CommandNodeType, Commands, StringParserType, SuggestionsType}, commands, packet_ids::{ClientPacketType, PacketRegistry, ServerPacketType}, packets::{ClientSettings, Kick, ProtocolState, SystemChatMessage, UnsignedClientCommand}, proxy_handler::ConnectionHandle, PlayerSyncData, SlotId};
 
 pub struct ClientPacketHandler;
 
@@ -87,6 +87,34 @@ impl ServerPacketHandler {
                         if let Some(data) = data {
                             client_handle.queue_packet(data, false).await;
                         }
+                    }
+                    return Ok(false);
+                },
+                ServerPacketType::Commands => {
+                    let mut commands = Commands::decode(&mut Cursor::new(buffer), version)?;
+                    let arg_index = commands.nodes.len();
+                    commands.nodes.push(CommandNode {
+                        childrens: Vec::new(),
+                        executable: true,
+                        redirect_index: None,
+                        node_type: CommandNodeType::Argument {
+                            name: "name".to_string(),
+                            parser_id: 5,
+                            properties: Some(ArgumentProperty::String(StringParserType::GreedyPhrase)),
+                            suggestions_type: Some(SuggestionsType::AskServer)
+                        }
+                    });
+                    commands.nodes.push(CommandNode {
+                        childrens: vec![arg_index],
+                        executable: false,
+                        redirect_index: None,
+                        node_type: CommandNodeType::Literal("server".to_string()),
+                    });
+                    let len = commands.nodes.len();
+                    commands.nodes[commands.root_index].childrens.push(len - 1);
+                    let bert = packets::get_full_server_packet_buf(&commands, version, server_handle.protocol_state()).unwrap();
+                    if let Some(bert) = bert {
+                        let _ = client_handle.queue_packet(bert, false).await;
                     }
                     return Ok(false);
                 }

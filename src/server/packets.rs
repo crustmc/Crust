@@ -745,7 +745,6 @@ impl Packet for ClientSettings {
     }
 }
 
-
 pub struct UnsignedClientCommand {
     pub message: String,
 }

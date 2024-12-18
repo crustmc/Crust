@@ -12,6 +12,7 @@ use tokio::{net::TcpListener, sync::RwLock, task::JoinHandle};
 use crate::{auth::GameProfile, chat::Text, util::{IOError, IOErrorKind, IOResult}};
 
 pub(crate) mod backend;
+pub(crate) mod brigadier;
 pub(crate) mod compression;
 pub(crate) mod encryption;
 pub(crate) mod initial_handler;
