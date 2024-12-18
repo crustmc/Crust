@@ -72,9 +72,11 @@ pub struct EstablishedBackend {
 impl EstablishedBackend {
     pub async fn begin_proxying(
         self,
+        server_name: &str,
         partner: ClientHandle,
         sync_data: Arc<PlayerSyncData>,
     ) -> (GameProfile, ConnectionHandle) {
+        let player_name = self.profile.name.clone();
         let Self {
             profile,
             stream,
@@ -175,7 +177,7 @@ impl EstablishedBackend {
         });
 
         let mut handle = ConnectionHandle::new(
-            format!("EstablishedBackend {}:{} -> {}", address.ip(), address.port(), partner_handle),
+            format!("[{}] <-> [{}]", address.ip(), player_name),
             sender,
             read,
             ProtocolState::Config,

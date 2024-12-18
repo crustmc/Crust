@@ -428,7 +428,7 @@ impl ProxiedPlayer {
                 read_task.abort();
             }
 
-            let (profile, server_handle) = backend.begin_proxying(ClientHandle {
+            let (profile, server_handle) = backend.begin_proxying(&server_name, ClientHandle {
                 player_id,
                 connection: handle.clone(),
             }, sync_data.clone()).await;

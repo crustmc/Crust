@@ -272,13 +272,13 @@ fn deserialize_style0(map: &Map<String, Value>) -> Result<Style> {
             }
         });
     }
-    style.font = map.get("font").map(|v| v.as_str().map(String::from)).flatten();
-    style.shadow_color = map.get("shadow_color").map(|v| v.as_i64().map(|v| v as u32)).flatten();
-    style.bold = map.get("bold").map(|v| v.as_bool()).flatten();
-    style.italic = map.get("italic").map(|v| v.as_bool()).flatten();
+    style.font = map.get("font").and_then(|v| v.as_str().map(String::from));
+    style.shadow_color = map.get("shadow_color").and_then(|v| v.as_i64().map(|v| v as u32));
+    style.bold = map.get("bold").and_then(|v| v.as_bool());
+    style.italic = map.get("italic").and_then(|v| v.as_bool());
     style.underlined = map.get("underlined").map(|v| v.as_bool()).flatten();
-    style.strikethrough = map.get("strikethrough").map(|v| v.as_bool()).flatten();
-    style.obfuscated = map.get("obfuscated").map(|v| v.as_bool()).flatten();
+    style.strikethrough = map.get("strikethrough").and_then(|v| v.as_bool());
+    style.obfuscated = map.get("obfuscated").and_then(|v| v.as_bool());
     Ok(style)
 }
 

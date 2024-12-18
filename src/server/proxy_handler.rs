@@ -169,7 +169,7 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
         connection: handle,
     };
     let con_handle = handle.connection.clone();
-    let (_backend_profile, backend_handle) = backend.begin_proxying(handle, player_sync_data).await;
+    let (_backend_profile, backend_handle) = backend.begin_proxying(&server_name, handle, player_sync_data).await;
 
     tokio::spawn(async move {
         let disconnect_guard = disconnect_lock.write().await;
