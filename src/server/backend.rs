@@ -177,7 +177,7 @@ impl EstablishedBackend {
         });
 
         let mut handle = ConnectionHandle::new(
-            format!("[{}] <-> [{}]", address.ip(), player_name),
+            format!("[{}] <-> [{}]", server_name, player_name),
             sender,
             read,
             ProtocolState::Config,
