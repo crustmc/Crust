@@ -187,6 +187,8 @@ impl EstablishedBackend {
             None,
             address,
         );
+        
+        log::info!("[{}] <-> [{}]: connected", player_name, server_name);
 
         let disconnect_lock = handle.disconnect_wait.clone();
 

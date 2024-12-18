@@ -72,8 +72,6 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
     }
 
     let (server_name, server_id, backend) = server_data.unwrap();
-    log::info!("{} <-> [{}]", display_name, server_name);
-
     let (read, mut write) = stream.into_split();
     let (mut encryption, decryption) = match data.encryption {
         Some(encryption) => (Some(encryption.0), Some(encryption.1)),
