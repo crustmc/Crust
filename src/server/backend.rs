@@ -107,16 +107,16 @@ impl EstablishedBackend {
                     &mut protocol_buf,
                     compression_threshold,
                     &mut decryption,
-                )
-                    .await;
-                if let Err(_e) = res {
-                    self_handle.disconnect().await;
+                ).await;
+                
+                if let Err(e) = res {
+                    self_handle.disconnect(&e.to_string()).await;
                     break;
                 }
 
                 let packet_id = VarInt::decode_simple(&mut Cursor::new(&read_buf));
-                if let Err(_e) = packet_id {
-                    self_handle.disconnect().await;
+                if let Err(e) = packet_id {
+                    self_handle.disconnect(&e.to_string()).await;
                     break;
                 }
                 let packet_id = packet_id.unwrap().get();
@@ -131,15 +131,16 @@ impl EstablishedBackend {
                     &partner.connection,
                 )
                     .await;
-                if let Err(_e) = &res {
-                    res.unwrap();
-                    self_handle.disconnect().await;
+                if let Err(e) = &res {
+                    self_handle.disconnect(&e.to_string()).await;
                     break;
                 }
-                if res.unwrap() && !partner.connection.queue_packet(read_buf, false).await {
-                    // TODO: handle when client is disconnected
-                    self_handle.disconnect().await;
-                    break;
+                if res.unwrap() {
+                    if let Err(e) = partner.connection.queue_packet(read_buf, false).await {
+                        // TODO: handle when client is disconnected
+                        self_handle.disconnect(&e.to_string()).await;
+                        break;
+                    }
                 }
             }
         });
@@ -174,7 +175,7 @@ impl EstablishedBackend {
         });
 
         let mut handle = ConnectionHandle::new(
-            "".to_string(),
+            format!("EstablishedBackend {}:{} -> {}", address.ip(), address.port(), partner_handle),
             sender,
             read,
             ProtocolState::Config,
@@ -223,9 +224,9 @@ impl EstablishedBackend {
                 handle_.protocol_state(),
             )
                 .unwrap();
-            partner_handle.queue_packet(buf, true).await;
-            partner_handle.sync().await;
-            partner_handle.disconnect().await;
+            partner_handle.queue_packet(buf, true).await.ok();
+            partner_handle.sync().await.ok();
+            partner_handle.disconnect("no fallback server found").await;
         });
         (profile, handle)
     }

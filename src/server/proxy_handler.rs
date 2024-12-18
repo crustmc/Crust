@@ -1,11 +1,12 @@
 use core::sync;
 use std::{io::Cursor, net::SocketAddr, ops::DerefMut, sync::{atomic::{AtomicBool, AtomicU8, Ordering}, Arc}, time::SystemTime};
-
+use std::backtrace::Backtrace;
+use std::fmt::{format, Debug, Display, Formatter};
 use byteorder::WriteBytesExt;
 use tokio::{net::{tcp::OwnedReadHalf, TcpStream}, sync::{mpsc::Sender, Mutex, Notify, RwLock}, task::AbortHandle};
 
 use crate::{auth::GameProfile, chat::{Text, TextBuilder}, server::{encryption, initial_handler::send_login_disconnect, packet_ids::{PacketRegistry, ServerPacketType}, packets::{self, encode_and_send_packet, read_and_decode_packet, Kick}, ProxiedPlayer}, util::VarInt};
-
+use crate::util::{IOError, IOResult};
 use super::{encryption::{PacketDecryption, PacketEncryption}, packet_handler::ClientPacketHandler, packets::{ClientSettings, PlayerPublicKey, ProtocolState}, ProxyServer, SlotId};
 
 pub(crate) struct ProxyingData {
@@ -30,6 +31,7 @@ pub struct ClientHandle {
     pub connection: ConnectionHandle,
 }
 
+#[inline]
 pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
     let display_name = format!("[{}|{}]", data.profile.name, data.address);
     log::debug!("{} Connecting to priority servers...", display_name);
@@ -177,7 +179,7 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
             *unsafe { core::mem::transmute::<_, &mut usize>(&ProxyServer::instance().player_count as *const usize) } -= 1;
             drop(lock);
             if let Some(ref backend_handle) = player.server_handle {
-                backend_handle.disconnect().await;
+                backend_handle.disconnect("client disconnected").await;
             }
         } else {
             panic!("Tried to remove player that is for whatever reason not in the player list! This is not intended to happen!");
@@ -195,6 +197,7 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
     con_handle.spawn_read_task(true, display_name, backend_handle, player_id, data.version).await;
 }
 
+#[inline]
 async fn read_task(packet_limit: bool, display_name: String, partner: ConnectionHandle, self_handle: ConnectionHandle, player_id: SlotId, version: i32, sync_data: Option<Arc<PlayerSyncData>>) {
     let mut read_buf = Vec::new();
     let mut protocol_buf = Vec::new();
@@ -205,9 +208,9 @@ async fn read_task(packet_limit: bool, display_name: String, partner: Connection
     let mut last_second = SystemTime::now();
     loop {
         let res = read_and_decode_packet(read.deref_mut(), &mut read_buf, &mut protocol_buf, self_handle.compression_threshold, decryption.deref_mut()).await;
-        if let Err(_e) = res {
-            partner.disconnect().await;
-            self_handle.disconnect().await;
+        if let Err(e) = res {
+            partner.disconnect(&e.to_string()).await;
+            self_handle.disconnect(&e.to_string()).await;
             break;
         }
 
@@ -216,9 +219,8 @@ async fn read_task(packet_limit: bool, display_name: String, partner: Connection
             if packet_per_second >= 2000 {
                 if let Ok(elapsed) = last_second.elapsed() {
                     if elapsed.as_millis() < 1000 {
-                        partner.disconnect().await;
-                        self_handle.disconnect().await;
-                        log::warn!("{} sent to many packets", display_name);
+                        self_handle.disconnect("to many packets").await;
+                        partner.disconnect("to many packets").await;
                         break;
                     }
                     last_second = SystemTime::now();
@@ -228,21 +230,22 @@ async fn read_task(packet_limit: bool, display_name: String, partner: Connection
         }
 
         let packet_id = VarInt::decode_simple(&mut Cursor::new(&read_buf));
-        if let Err(_e) = packet_id {
-            self_handle.disconnect().await;
+        if let Err(e) = packet_id {
+            self_handle.disconnect(&e.to_string()).await;
             break;
         }
         let packet_id = packet_id.unwrap().get();
-        let res = ClientPacketHandler::handle_packet(packet_id, &read_buf[VarInt::get_size(packet_id)..],
-                                                     version, player_id, &self_handle, &sync_data).await;
-        if let Err(_e) = res {
-            partner.disconnect().await;
-            self_handle.disconnect().await;
+        let res = ClientPacketHandler::handle_packet(packet_id, &read_buf[VarInt::get_size(packet_id)..], version, player_id, &self_handle, &sync_data).await;
+        if let Err(e) = res {
+            partner.disconnect(&e.to_string()).await;
+            self_handle.disconnect(&e.to_string()).await;
             break;
         }
-        if res.unwrap() && !partner.queue_packet(read_buf, false).await {
-            partner.disconnect().await;
-            //break;
+        if res.unwrap() {
+            if let Err(e) = partner.queue_packet(read_buf, false).await {
+                partner.disconnect(&e.to_string()).await;
+                //break;
+            }
         }
         read_buf = Vec::new();
     }
@@ -269,10 +272,18 @@ pub struct ConnectionHandle {
     pub(crate) disconnect_wait: Arc<RwLock<()>>,
     sync_data: Option<Arc<PlayerSyncData>>,
     pub address: SocketAddr,
+    pub(crate) closed: Arc<AtomicBool>,
+
 }
 
+impl Display for ConnectionHandle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", format!("[{}, {:?}, {:?}]", self.name, self.protocol_state, self.protocol_state))
+    }
+}
 
 impl ConnectionHandle {
+    #[inline]
     pub(crate) fn new(name: String, sender: Sender<PacketSending>, reader: OwnedReadHalf, protocol_state: ProtocolState, write_task: AbortHandle,
                       compression_threshold: i32, decryption: Option<PacketDecryption>, sync_data: Option<Arc<PlayerSyncData>>, address: SocketAddr) -> Self {
         Self {
@@ -287,6 +298,7 @@ impl ConnectionHandle {
             disconnect_wait: Arc::new(RwLock::new(())),
             sync_data,
             address,
+            closed: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -300,6 +312,7 @@ impl ConnectionHandle {
         self.protocol_state.store(state as u8, Ordering::Relaxed);
     }
 
+    #[inline]
     pub(crate) async fn spawn_read_task(&self, packet_limiter: bool, display_name: String, partner: ConnectionHandle, player_id: SlotId, version: i32) {
         let mut old_read_task = self.read_task.lock().await;
         if old_read_task.is_some() {
@@ -309,34 +322,48 @@ impl ConnectionHandle {
         old_read_task.replace(read_task.abort_handle());
     }
 
-    pub async fn sync(&self) {
+    #[inline]
+    pub async fn sync(&self) -> IOResult<()> {
         let (sender, receiver) = tokio::sync::oneshot::channel();
-        let _ = self.sender.send(PacketSending::Sync(sender)).await;
-        let _ = receiver.await;
+        self.sender.send(PacketSending::Sync(sender)).await.map_err(|_| IOError::new(std::io::ErrorKind::Other, "Failed to queue sync packet!"))?;
+        receiver.await.map_err(|_| IOError::new(std::io::ErrorKind::Other, "Failed to receive sync packet!"))
     }
 
-    pub async fn queue_packet(&self, packet: Vec<u8>, bypass_drop: bool) -> bool {
-        self.sender.send(PacketSending::Packet(packet, bypass_drop)).await.is_ok()
+    #[inline]
+    pub async fn queue_packet(&self, packet: Vec<u8>, bypass_drop: bool) -> IOResult<()> {
+        self.sender.send(PacketSending::Packet(packet, bypass_drop)).await.map_err(|_| IOError::new(std::io::ErrorKind::Other, "Failed to queue packet!"))
     }
 
-    pub async fn drop_redundant(&self, drop: bool) -> bool {
-        self.sender.send(PacketSending::DropRedundant(drop)).await.is_ok()
-    }
-    pub async fn on_bundle(&self) -> bool {
-        self.sender.send(PacketSending::BundleReceived).await.is_ok()
+    #[inline]
+    pub async fn drop_redundant(&self, drop: bool) -> IOResult<()> {
+        self.sender.send(PacketSending::DropRedundant(drop)).await.map_err(|_| IOError::new(std::io::ErrorKind::Other, "Failed to queue drop redundant packet!"))
     }
 
-    pub async fn goto_config(&self, version: i32) -> bool {
-        self.sender.send(PacketSending::StartConfig(version)).await.is_ok()
+    #[inline]
+    pub async fn on_bundle(&self) -> IOResult<()> {
+        self.sender.send(PacketSending::BundleReceived).await.map_err(|_| IOError::new(std::io::ErrorKind::Other, "Failed to queue bundle received packet!"))
     }
 
-    pub async fn disconnect(&self) {
+    #[inline]
+    pub async fn goto_config(&self, version: i32) -> IOResult<()> {
+        self.sender.send(PacketSending::StartConfig(version)).await.map_err(|_| IOError::new(std::io::ErrorKind::Other, "Failed to queue start config packet!"))
+    }
+
+    #[inline]
+    pub async fn disconnect(&self, reason: &str) {
+        if self.closed.load(Ordering::Relaxed) {
+            log::debug!("{} disconnected twice: {}", self.name, reason);
+            return;
+        }
+        self.closed.swap(true, Ordering::Relaxed);
+        log::info!("{} disconnected: {}", self.name, reason);
         self.write_task.abort();
         if let Some(task) = self.read_task.lock().await.take() {
             task.abort();
         }
     }
 
+    #[inline]
     pub async fn wait_for_disconnect(&self) {
         let _ = self.disconnect_wait.read().await;
     }

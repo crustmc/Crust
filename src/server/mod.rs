@@ -45,6 +45,8 @@ pub struct ProxyConfig {
     pub servers: Vec<ServerConfig>,
     pub spigot_forward: bool,
     pub priorities: Vec<String>,
+    pub max_packet_per_second: i32,
+
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -75,6 +77,7 @@ impl Default for ProxyConfig {
                 }
             ],
             priorities: vec!["lobby".to_owned()],
+            max_packet_per_second: 2000
         }
     }
 }
@@ -315,11 +318,9 @@ pub fn run_server() {
                     *counter = 0;
                     time = now;
                     clear = true;
-                    println!("CLEAR");
                 }
 
                 if *counter > limit {
-                    println!("BLOCKE");
                     continue;
                 }
                 if clear {
@@ -350,9 +351,7 @@ impl ProxiedPlayer {
         };
         let data = packets::get_full_server_packet_buf(&chat, self.protocol_version, self.client_handle.protocol_state())?;
         if let Some(data) = data {
-            if !self.client_handle.queue_packet(data, false).await {
-                return Err(IOError::new(IOErrorKind::UnexpectedEof, "Failed to queue chat message packet"));
-            }
+            return self.client_handle.queue_packet(data, false).await;
         } else {
             println!("packet not in current state");
         }
@@ -360,6 +359,11 @@ impl ProxiedPlayer {
     }
 
     pub async fn switch_server(&self, server_id: SlotId) -> Option<JoinHandle<bool>> {
+
+        if self.client_handle.closed.load(Ordering::Relaxed) {
+            return None;
+        }
+        
         let sync_data = self.sync_data.clone();
 
         if let Err(true) = sync_data.is_switching_server.compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed) {
@@ -372,6 +376,11 @@ impl ProxiedPlayer {
         let handle = self.client_handle.clone();
         let server_handle = self.server_handle.clone();
         let join_handle = tokio::spawn(async move {
+            
+            if handle.closed.load(Ordering::Relaxed) {
+                return false;
+            }
+            
             let (addr, server_name) = {
                 let server_list = ProxyServer::instance().servers().read().await;
                 let server = server_list.get_server(server_id);
@@ -393,22 +402,21 @@ impl ProxiedPlayer {
                     player.send_message(Text::new(format!("§cCould not connect: {}", e))).await.ok();
                 }
                 drop(players);
-
-
                 return false;
             }
             let backend = backend.unwrap();
 
             if let ProtocolState::Game = handle.protocol_state() {
+
+                handle.drop_redundant(true).await;
                 if let Some(server_handle) = server_handle {
-                    handle.drop_redundant(true).await;
-                    server_handle.disconnect().await;
+                    server_handle.disconnect("client is switching servers").await;
                     server_handle.wait_for_disconnect().await;
                 }
 
                 handle.goto_config(version).await;
-
                 sync_data.config_ack_notify.notified().await;
+
                 handle.drop_redundant(false).await;
             } else {
                 log::warn!("Player {} is not in game state, cancelling server switch.", username);
@@ -421,15 +429,15 @@ impl ProxiedPlayer {
             }
 
             let (profile, server_handle) = backend.begin_proxying(ClientHandle {
-                player_id: player_id,
+                player_id,
                 connection: handle.clone(),
             }, sync_data.clone()).await;
 
             let settings = sync_data.client_settings.lock().await;
-            // todo dont lock for settings
+
             if let Some(packet) = settings.as_ref() {
                 if let Some(data) = packets::get_full_client_packet_buf(packet, version, handle.protocol_state()).unwrap() {
-                    if !server_handle.queue_packet(data, true).await {
+                    if let Err(err) = server_handle.queue_packet(data, true).await {
                         drop(settings);
                         sync_data.is_switching_server.store(false, Ordering::Relaxed);
                         return false;
@@ -450,7 +458,7 @@ impl ProxiedPlayer {
                 drop(players);
             } else {
                 drop(players);
-                server_handle.disconnect().await;
+                server_handle.disconnect("player has disconnected").await;
             }
             sync_data.is_switching_server.store(false, Ordering::Relaxed);
             true
