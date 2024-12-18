@@ -206,6 +206,7 @@ async fn read_task(packet_limit: bool, display_name: String, partner: Connection
     let sync_data = sync_data.unwrap();
     let mut packet_per_second = 0usize;
     let mut last_second = SystemTime::now();
+    let mut should_forward = true;
     loop {
         let res = read_and_decode_packet(read.deref_mut(), &mut read_buf, &mut protocol_buf, self_handle.compression_threshold, decryption.deref_mut()).await;
         if let Err(e) = res {
@@ -241,10 +242,10 @@ async fn read_task(packet_limit: bool, display_name: String, partner: Connection
             self_handle.disconnect(&e.to_string()).await;
             break;
         }
-        if res.unwrap() {
+        if should_forward && res.unwrap() {
             if let Err(e) = partner.queue_packet(read_buf, false).await {
                 partner.disconnect(&e.to_string()).await;
-                //break;
+                should_forward = false;
             }
         }
         read_buf = Vec::new();

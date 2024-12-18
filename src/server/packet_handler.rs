@@ -19,6 +19,7 @@ impl ClientPacketHandler {
                     client_handle.set_protocol_state(ProtocolState::Config);
                     if sync_data.is_switching_server.load(Ordering::Relaxed) {
                         sync_data.config_ack_notify.notify_one();
+                        return Ok(false);
                     }
                 }
                 ClientPacketType::ClientSettings => {
