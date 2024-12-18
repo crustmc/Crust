@@ -1,11 +1,8 @@
-use core::sync;
 use std::{io::Cursor, net::SocketAddr, ops::DerefMut, sync::{atomic::{AtomicBool, AtomicU8, Ordering}, Arc}, time::SystemTime};
-use std::backtrace::Backtrace;
-use std::fmt::{format, Debug, Display, Formatter};
-use byteorder::WriteBytesExt;
+use std::fmt::Display;
 use tokio::{net::{tcp::OwnedReadHalf, TcpStream}, sync::{mpsc::Sender, Mutex, Notify, RwLock}, task::AbortHandle};
 
-use crate::{auth::GameProfile, chat::{Text, TextBuilder}, server::{encryption, initial_handler::send_login_disconnect, packet_ids::{PacketRegistry, ServerPacketType}, packets::{self, encode_and_send_packet, read_and_decode_packet, Kick}, ProxiedPlayer}, util::VarInt};
+use crate::{auth::GameProfile, chat::Text, server::{packet_ids::{PacketRegistry, ServerPacketType}, packets::{self, encode_and_send_packet, read_and_decode_packet, Kick}, ProxiedPlayer}, util::VarInt};
 use crate::util::{IOError, IOResult};
 use super::{encryption::{PacketDecryption, PacketEncryption}, packet_handler::ClientPacketHandler, packets::{ClientSettings, PlayerPublicKey, ProtocolState}, ProxyServer, SlotId};
 
@@ -196,7 +193,7 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
 }
 
 #[inline]
-async fn read_task(packet_limit: bool, display_name: String, partner: ConnectionHandle, self_handle: ConnectionHandle, player_id: SlotId, version: i32, sync_data: Option<Arc<PlayerSyncData>>) {
+async fn read_task(packet_limit: bool, _display_name: String, partner: ConnectionHandle, self_handle: ConnectionHandle, player_id: SlotId, version: i32, sync_data: Option<Arc<PlayerSyncData>>) {
     let mut read_buf = Vec::new();
     let mut protocol_buf = Vec::new();
     let mut read = self_handle.reader.lock().await;

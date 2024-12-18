@@ -48,7 +48,7 @@ pub fn get_full_server_packet_buf<P: Packet + ServerPacket>(packet: &P, version:
         return Ok(Some(data));
     }
     panic!("packet not found: {:#?}, version: {:#?}, protocol: {:#?}", packet.get_type(), version, protocol);
-    Ok(None)
+    //Ok(None)
 }
 pub fn get_full_server_packet_buf_write_buffer<P: Packet + ServerPacket>(buffer: &mut Vec<u8>, packet: &P, version: i32, protocol: ProtocolState) -> IOResult<bool> {
     if let Some(packet_id) = PacketRegistry::instance().get_server_packet_id(protocol, version, packet.get_type()) {
@@ -58,7 +58,7 @@ pub fn get_full_server_packet_buf_write_buffer<P: Packet + ServerPacket>(buffer:
         return Ok(true);
     }
     panic!("packet not found: {:#?}, version: {:#?}, protocol: {:#?}", packet.get_type(), version, protocol);
-    Ok(false)
+    //Ok(false)
 }
 
 pub fn get_full_client_packet_buf<P: Packet + ClientPacket>(packet: &P, version: i32, protocol: ProtocolState) -> IOResult<Option<Vec<u8>>> {
@@ -69,7 +69,7 @@ pub fn get_full_client_packet_buf<P: Packet + ClientPacket>(packet: &P, version:
         return Ok(Some(data));
     }
     panic!("packet not found: {:#?}, version: {:#?}, protocol: {:#?}", packet.get_type(), version, protocol);
-    Ok(None)
+    //Ok(None)
 }
 
 pub fn get_full_client_packet_buf_write_buffer<P: Packet + ClientPacket>(buffer: &mut Vec<u8>, packet: &P, version: i32, protocol: ProtocolState) -> IOResult<bool> {
@@ -80,7 +80,7 @@ pub fn get_full_client_packet_buf_write_buffer<P: Packet + ClientPacket>(buffer:
         return Ok(true);
     }
     panic!("packet not found: {:#?}, version: {:#?}, protocol: {:#?}", packet.get_type(), version, protocol);
-    Ok(false)
+    //Ok(false)
 }
 
 

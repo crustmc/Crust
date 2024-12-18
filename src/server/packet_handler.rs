@@ -72,7 +72,7 @@ impl ServerPacketHandler {
     pub async fn handle_packet(packet_id: i32, buffer: &[u8], version: i32, _player_id: SlotId, server_handle: &ConnectionHandle, _: &Arc<PlayerSyncData>, client_handle: &ConnectionHandle) -> IOResult<bool> {
         if let Some(packet_type) = PacketRegistry::instance().get_server_packet_type(server_handle.protocol_state(), version, packet_id) { match packet_type {
             ServerPacketType::BundleDelimiter => {
-                client_handle.on_bundle().await;
+                let _ = client_handle.on_bundle().await;
                 return Ok(false);
             }
             ServerPacketType::Kick => {
@@ -85,7 +85,7 @@ impl ServerPacketHandler {
                     };
                     let data = packets::get_full_server_packet_buf(&chat, version, state)?;
                     if let Some(data) = data {
-                        client_handle.queue_packet(data, false).await;
+                        let _ = client_handle.queue_packet(data, false).await;
                     }
                 }
                 return Ok(false);

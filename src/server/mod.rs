@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use slotmap::{DefaultKey, SlotMap};
 use tokio::{net::TcpListener, sync::RwLock, task::JoinHandle};
 
-use crate::{auth::GameProfile, chat::Text, util::{IOError, IOErrorKind, IOResult}};
+use crate::{auth::GameProfile, chat::Text, util::IOResult};
 
 pub(crate) mod backend;
 pub(crate) mod brigadier;
@@ -408,16 +408,16 @@ impl ProxiedPlayer {
 
             if let ProtocolState::Game = handle.protocol_state() {
 
-                handle.drop_redundant(true).await;
+                let _ = handle.drop_redundant(true).await;
                 if let Some(server_handle) = server_handle {
                     server_handle.disconnect("client is switching servers").await;
                     server_handle.wait_for_disconnect().await;
                 }
 
-                handle.goto_config(version).await;
+                let _ = handle.goto_config(version).await;
                 sync_data.config_ack_notify.notified().await;
 
-                handle.drop_redundant(false).await;
+                let _ = handle.drop_redundant(false).await;
             } else {
                 log::warn!("Player {} is not in game state, cancelling server switch.", username);
                 sync_data.is_switching_server.store(false, Ordering::Relaxed);
@@ -437,7 +437,7 @@ impl ProxiedPlayer {
 
             if let Some(packet) = settings.as_ref() {
                 if let Some(data) = packets::get_full_client_packet_buf(packet, version, handle.protocol_state()).unwrap() {
-                    if let Err(err) = server_handle.queue_packet(data, true).await {
+                    if let Err(_e) = server_handle.queue_packet(data, true).await {
                         drop(settings);
                         sync_data.is_switching_server.store(false, Ordering::Relaxed);
                         return false;
