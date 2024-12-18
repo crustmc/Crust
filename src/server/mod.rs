@@ -303,31 +303,38 @@ pub fn run_server() {
         log::info!("Listening on {}", listener.local_addr().unwrap());
         let mut map = HashMap::new();
         let mut time = Instant::now();
-        let enabled = ProxyServer::instance().config.connection_throttle_time > 0;
+        let connection_throttle = ProxyServer::instance().config.connection_throttle_time > 0;
         let interval = Duration::from_millis(ProxyServer::instance().config().connection_throttle_time as u64);
         let limit = ProxyServer::instance().config().connection_throttle_limit;
         loop {
-            let (stream, peer_addr) = listener.accept().await.unwrap();
-            if enabled {
-                let counter = map.entry(peer_addr.ip()).or_insert(0u8);
-                *counter += 1;
+            match listener.accept().await {
+                Ok((stream, peer_addr)) => {
+                    if connection_throttle {
+                        let counter = map.entry(peer_addr.ip()).or_insert(0u8);
+                        *counter += 1;
 
-                let now = Instant::now();
-                let mut clear = false;
-                if now.duration_since(time) >= interval {
-                    *counter = 0;
-                    time = now;
-                    clear = true;
-                }
+                        let now = Instant::now();
+                        let mut clear = false;
+                        if now.duration_since(time) >= interval {
+                            *counter = 0;
+                            time = now;
+                            clear = true;
+                        }
 
-                if *counter > limit {
-                    continue;
+                        if *counter > limit {
+                            continue;
+                        }
+                        if clear {
+                            map.clear();
+                        }
+                    }
+                    initial_handler::handle(stream, peer_addr).await;
                 }
-                if clear {
-                    map.clear();
+                Err(err) => {
+                    // probably out of file descriptors
+                    log::debug!("Failed to accept connection: {}", err);
                 }
             }
-            initial_handler::handle(stream, peer_addr).await;
         }
     });
 }
