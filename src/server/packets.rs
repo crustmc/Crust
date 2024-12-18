@@ -168,7 +168,7 @@ impl Packet for Kick {
         Self: Sized,
     {
         if version >= R1_20_3 {
-            let nbt = nbt::read_networking_nbttag(src, version)?;
+            let nbt = nbt::read_networking_nbt(src, version)?;
             if let Some(nbt_tag) = nbt.left() {
                 if let Some(nbt_tag) = nbt_tag {
                     let json = nbt_tag.to_json();
@@ -196,7 +196,7 @@ impl Packet for Kick {
         if version >= R1_20_3 {
             let json = crate::chat::serialize_json(&self.text);
             let nbt = NbtType::from_json(&json)?;
-            nbt::write_networking_nbttag(dst, version, &Either::Left(Some(nbt)))?;
+            nbt::write_networking_nbt(dst, version, &Either::Left(Some(nbt)))?;
         } else {
             let text = crate::chat::serialize_json(&self.text);
             let string = serde_json::to_string(&text)?;
@@ -303,13 +303,11 @@ impl Packet for LoginRequest {
         if version >= R1_19_1 {
             if version >= R1_20_2 {
                 EncodingHelper::write_uuid(dst, self.uuid.as_ref().unwrap())?;
+            } else if let Some(ref uuid) = self.uuid {
+                dst.write_u8(1)?;
+                EncodingHelper::write_uuid(dst, uuid)?;
             } else {
-                if let Some(ref uuid) = self.uuid {
-                    dst.write_u8(1)?;
-                    EncodingHelper::write_uuid(dst, uuid)?;
-                } else {
-                    dst.write_u8(0)?;
-                }
+                dst.write_u8(0)?;
             }
         }
         Ok(())
@@ -788,17 +786,16 @@ impl Packet for SystemChatMessage {
     where
         Self: Sized,
     {
-        let nbt = nbt::read_networking_nbttag(src, version)?;
+        let nbt = nbt::read_networking_nbt(src, version)?;
         if let Some(nbt_tag) = nbt.left() {
             if let Some(nbt_tag) = nbt_tag {
                 let json = nbt_tag.to_json();
                 let text = crate::chat::deserialize_json(&json).map_err(|err| IOError::new(ErrorKind::InvalidData, err))?;
-                let pos;
-                if version >= R1_19_1 {
-                    pos = if src.read_u8()? != 0 { 2 } else { 0 };
+                let pos = if version >= R1_19_1 {
+                    if src.read_u8()? != 0 { 2 } else { 0 }
                 } else {
-                    pos = VarInt::decode(src, 5)?.get();
-                }
+                    VarInt::decode(src, 5)?.get()
+                };
                 Ok(Self {
                     message: text,
                     pos,
@@ -814,7 +811,7 @@ impl Packet for SystemChatMessage {
     fn encode<W: Write + ?Sized>(&self, dst: &mut W, version: i32) -> IOResult<()> {
         let json = crate::chat::serialize_json(&self.message);
         let nbt = NbtType::from_json(&json)?;
-        nbt::write_networking_nbttag(dst, version, &Either::Left(Some(nbt)))?;
+        nbt::write_networking_nbt(dst, version, &Either::Left(Some(nbt)))?;
         if version >= R1_19_1 {
             dst.write_u8(self.pos as u8)?;
         } else {

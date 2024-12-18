@@ -423,7 +423,7 @@ impl NbtType {
 }
 
 #[inline]
-pub fn read_networking_nbttag<R: ReadBytesExt + ?Sized>(input: &mut R, version: i32) -> IOResult<Either<Option<NbtType>, NamedTag>> {
+pub fn read_networking_nbt<R: ReadBytesExt + ?Sized>(input: &mut R, version: i32) -> IOResult<Either<Option<NbtType>, NamedTag>> {
     let mut counter = NbtCounter {
         depth: 0,
         max_bytes: u64::MAX,
@@ -448,7 +448,7 @@ pub fn read_networking_nbttag<R: ReadBytesExt + ?Sized>(input: &mut R, version: 
 }
 
 #[inline]
-pub fn write_networking_nbttag<W: WriteBytesExt + ?Sized>(out: &mut W, version: i32, either: &Either<Option<NbtType>, NamedTag>) -> IOResult<()> {
+pub fn write_networking_nbt<W: WriteBytesExt + ?Sized>(out: &mut W, _: i32, either: &Either<Option<NbtType>, NamedTag>) -> IOResult<()> {
     if let Some(option) = either.as_ref().left() {
         if let Some(nbt) = option {
             out.write_i8(nbt.id())?;

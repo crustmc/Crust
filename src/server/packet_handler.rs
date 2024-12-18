@@ -69,31 +69,28 @@ pub struct ServerPacketHandler;
 
 impl ServerPacketHandler {
     pub async fn handle_packet(packet_id: i32, buffer: &[u8], version: i32, _player_id: SlotId, server_handle: &ConnectionHandle, _: &Arc<PlayerSyncData>, client_handle: &ConnectionHandle) -> IOResult<bool> {
-        match PacketRegistry::instance().get_server_packet_type(server_handle.protocol_state(), version, packet_id) {
-            Some(packet_type) => match packet_type {
-                ServerPacketType::BundleDelimiter => {
-                    client_handle.on_bundle().await;
-                    return Ok(false);
-                }
-                ServerPacketType::Kick => {
-                    let kick = Kick::decode(&mut Cursor::new(buffer), version)?;
-                    let state = server_handle.protocol_state();
-                    if state == ProtocolState::Game {
-                        let chat = SystemChatMessage {
-                            message: kick.text,
-                            pos: 0,
-                        };
-                        let data = packets::get_full_server_packet_buf(&chat, version, state)?;
-                        if let Some(data) = data {
-                            client_handle.queue_packet(data, false).await;
-                        }
+        if let Some(packet_type) = PacketRegistry::instance().get_server_packet_type(server_handle.protocol_state(), version, packet_id) { match packet_type {
+            ServerPacketType::BundleDelimiter => {
+                client_handle.on_bundle().await;
+                return Ok(false);
+            }
+            ServerPacketType::Kick => {
+                let kick = Kick::decode(&mut Cursor::new(buffer), version)?;
+                let state = server_handle.protocol_state();
+                if state == ProtocolState::Game {
+                    let chat = SystemChatMessage {
+                        message: kick.text,
+                        pos: 0,
+                    };
+                    let data = packets::get_full_server_packet_buf(&chat, version, state)?;
+                    if let Some(data) = data {
+                        client_handle.queue_packet(data, false).await;
                     }
-                    return Ok(false);
                 }
-                _ => {}
-            },
-            None => {}
-        }
+                return Ok(false);
+            }
+            _ => {}
+        } }
         Ok(true)
     }
 }
