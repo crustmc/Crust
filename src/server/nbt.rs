@@ -34,15 +34,18 @@ impl NbtType {
                         Self::DoubleTag(value)
                     }
                 } else {
-                    let value = value.as_i64().unwrap();
-                    if value >= i8::MIN as i64 && value <= i8::MAX as i64 {
-                        Self::ByteTag(value as i8)
-                    } else if value >= i16::MIN as i64 && value <= i16::MAX as i64 {
-                        Self::ShortTag(value as i16)
-                    } else if value >= i32::MIN as i64 && value <= i32::MAX as i64 {
-                        Self::IntTag(value as i32)
+                    if let Some(value) = value.as_i64() {
+                        if value >= i8::MIN as i64 && value <= i8::MAX as i64 {
+                            Self::ByteTag(value as i8)
+                        } else if value >= i16::MIN as i64 && value <= i16::MAX as i64 {
+                            Self::ShortTag(value as i16)
+                        } else if value >= i32::MIN as i64 && value <= i32::MAX as i64 {
+                            Self::IntTag(value as i32)
+                        } else {
+                            Self::LongTag(value)
+                        }
                     } else {
-                        Self::LongTag(value)
+                        return Err(IOError::new(ErrorKind::InvalidData, "json number is not i64 or f64"));
                     }
                 }
             }
