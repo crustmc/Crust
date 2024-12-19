@@ -9,6 +9,7 @@ versions starting at 1.20.2. We aim to improve the protocol support to 1.8 and u
 
 Currently Linux aarch64 and x86_64 are available in compiled form.
 Download the binary file that matches your OS on [Jenkins](https://ci.outfluencer.dev/job/Crust/)
+
 make the file executeable
 
 ```bash
