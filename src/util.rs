@@ -243,7 +243,7 @@ impl EncodingHelper {
         if len > max_length {
             return Err(IOError::new(IOErrorKind::InvalidData, "Byte array too big"));
         }
-        let mut data = vec![0; len];
+        let mut data = Self::need_read_uninit_vec(len);
         src.read_exact(&mut data)?;
         Ok(data)
     }
@@ -262,7 +262,7 @@ impl EncodingHelper {
         if len > max_length * 3 {
             return Err(IOError::new(IOErrorKind::InvalidData, "String too big"));
         }
-        let mut data = vec![0; len];
+        let mut data = Self::need_read_uninit_vec(len);
         src.read_exact(&mut data)?;
         String::from_utf8(data).map_err(|e| IOError::new(IOErrorKind::InvalidData, e))
     }
@@ -279,4 +279,12 @@ impl EncodingHelper {
         src.read_exact(&mut data)?;
         Ok(Uuid::from_bytes(data))
     }
+
+    #[inline(always)]
+    pub fn need_read_uninit_vec(len: usize) -> Vec<u8> {
+        let mut data = Vec::with_capacity(len);
+        unsafe { data.set_len(len); }
+        data
+    }
+    
 }
