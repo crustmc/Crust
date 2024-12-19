@@ -7,8 +7,8 @@ versions starting at 1.20.2. We aim to improve the protocol support to 1.8 and u
 
 ## Download and Installation
 
-Currently Linux aarch64 and x86_64 are available.
-Download the binary file that matches your OS here: https://ci.outfluencer.dev/job/Crust/
+Currently Linux aarch64 and x86_64 are available in compiled form.
+Download the binary file that matches your OS on [Jenkins](https://ci.outfluencer.dev/job/Crust/)
 make the file executeable
 
 ```bash
