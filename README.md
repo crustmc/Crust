@@ -1,4 +1,4 @@
-# Crust 🥧
+# Crust 💡
 
 Crust is a Minecraft Layer 7 Reverse Proxy that aims for pure performance and rich features.
 
