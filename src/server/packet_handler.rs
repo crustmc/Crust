@@ -2,7 +2,7 @@ use std::{future::Future, io::Cursor, pin::Pin, sync::{atomic::Ordering, Arc}};
 
 use crate::{chat::Text, server::{packets::{self, Packet}, ProxyServer}, util::IOResult};
 
-use self::command::CommandSender;
+use self::{command::CommandSender, packets::{TabCompleteRequest, TabCompleteResponse}};
 
 use super::{brigadier::{ArgumentProperty, CommandNode, CommandNodeType, Commands, StringParserType, SuggestionsType}, command, packet_ids::{ClientPacketType, PacketRegistry, ServerPacketType}, packets::{ClientSettings, Kick, ProtocolState, SystemChatMessage, UnsignedClientCommand}, proxy_handler::ConnectionHandle, PlayerSyncData, SlotId};
 
@@ -29,16 +29,39 @@ impl ClientPacketHandler {
                 ClientPacketType::UnsignedClientCommand => {
                     let packet = UnsignedClientCommand::decode(&mut Cursor::new(buffer), version)?;
                     let line = packet.message;
-                    let success = tokio::task::spawn_blocking(move || { // Needs to be blocking because commands are executed synchronously
+                    let command_name = line.split_ascii_whitespace().next().unwrap_or("").to_string();
+                    if ProxyServer::instance().command_registry().get_command_by_name(&command_name).is_none() {
+                        return Ok(true);
+                    }
+                    tokio::task::spawn_blocking(move || { // Needs to be blocking because commands are executed synchronously
                         if ProxyServer::instance().command_registry().execute(&CommandSender::Player(player_id), &line) {
                             return true;
                         } else {
                             log::debug!("Command not found '{}' passing command to server", line);
                         }
                         false
-                    }).await?;
-                    if success { // don't forward the command if it was handled by the proxy
-                        return Ok(false);
+                    });
+                    return Ok(false);
+                }
+                ClientPacketType::TabCompleteRequest => {
+                    let packet = TabCompleteRequest::decode(&mut Cursor::new(buffer), version)?;
+                    let cursor = packet.cursor;
+                    if cursor.starts_with("/") {
+                        let transaction_id = packet.transaction_id;
+                        let response = tokio::task::spawn_blocking(move || { // Needs to be blocking because commands are executed synchronously
+                            ProxyServer::instance().command_registry().tab_complete(&CommandSender::Player(player_id), &cursor[1..])
+                        }).await?;
+                        if let Some(response) = response {
+                            if let Some(response) = response {
+                                let packet = packets::get_full_server_packet_buf(&TabCompleteResponse {
+                                    transaction_id,
+                                    commands: None, // TODO: Implement for versions < R1_13
+                                    suggestions: Some(response),
+                                }, version, client_handle.protocol_state())?.unwrap();
+                                let _ = client_handle.queue_packet(packet, false).await;
+                            }
+                            return Ok(false);
+                        }
                     }
                 }
                 _ => {}

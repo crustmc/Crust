@@ -23,6 +23,7 @@ pub enum ServerPacketType {
     BundleDelimiter, // game
     SystemChatMessage, // game
     Commands, // game
+    TabCompleteResponse, // game
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -39,8 +40,9 @@ pub enum ClientPacketType {
 
     ConfigurationAck, // game
     FinishConfiguration, // config
-    ClientSettings,
-    UnsignedClientCommand,
+    ClientSettings, // config game
+    UnsignedClientCommand, // game
+    TabCompleteRequest, // game
 }
 
 pub struct PacketRegistry {
@@ -221,6 +223,22 @@ impl PacketRegistry {
                 (R1_21_2, 0x05)
             }
             begin! {
+                Client, Game, TabCompleteRequest;
+                (R1_8, 0x14)
+                (R1_9, 0x01)
+                (R1_12, 0x02)
+                (R1_12_1, 0x01)
+                (R1_13, 0x05)
+                (R1_14, 0x06)
+                (R1_19, 0x08)
+                (R1_19_1, 0x09)
+                (R1_19_3, 0x08)
+                (R1_19_4, 0x09)
+                (R1_20_2, 0x0A)
+                (R1_20_5, 0x0B)
+                (R1_21_2, 0x0D)
+            }
+            begin! {
                 Client, Game, ConfigurationAck;
                 (R1_20_2, 0x0B)
                 (R1_20_5, 0x0C)
@@ -228,7 +246,7 @@ impl PacketRegistry {
             }
 
             begin! {
-                Server, Config, CookieRequest;
+                Server, Game, CookieRequest;
                 (R1_20_5, 0x16)
             }
             begin! {
@@ -278,6 +296,20 @@ impl PacketRegistry {
                 (R1_19_3, 0x0E)
                 (R1_19_4, 0x10)
                 (R1_20_2, 0x11)
+            }
+            begin! {
+                Server, Game, TabCompleteResponse;
+                (R1_8, 0x3A)
+                (R1_9, 0x0E)
+                (R1_13, 0x10)
+                (R1_15, 0x11)
+                (R1_16, 0x10)
+                (R1_16_2, 0x0F)
+                (R1_17, 0x11)
+                (R1_19, 0x0E)
+                (R1_19_3, 0x0D)
+                (R1_19_4, 0x0F)
+                (R1_20_2, 0x10)
             }
         }
 

@@ -1,10 +1,13 @@
-use crate::{chat::*, server::ProxyServer};
+use crate::{chat::*, server::{brigadier::{Suggestion, Suggestions}, ProxyServer}};
 
 use super::{CommandRegistryBuilder, CommandSender};
 
 pub fn register_all(builder: CommandRegistryBuilder) -> CommandRegistryBuilder {
     builder
-        .core_command(["server"], Default::default(), server_command, None, "crust.command.server", "Switches the player to another server")
+        .core_command(
+            ["server"], Default::default(), server_command, Some(server_command_completer),
+            "crust.command.server", "Switches the player to another server"
+        )
 }
 
 fn server_command(sender: &CommandSender, _name: &str, args: Vec<&str>) {
@@ -46,5 +49,22 @@ fn server_command(sender: &CommandSender, _name: &str, args: Vec<&str>) {
             sender.send_message(TextBuilder::new(format!("The server {} does not exist", server_name))
                 .style(Style::default().with_color(TextColor::Red)));
         }
+    }
+}
+
+fn server_command_completer(_sender: &CommandSender, _name: &str, args: Vec<&str>, suggestions: &mut Suggestions) {
+    if args.len() != 1 {
+        return;
+    }
+    let filter = args.first().unwrap();
+    let servers = ProxyServer::instance().servers().blocking_read();
+    for (_, info) in servers.all_servers() {
+        if !info.label.starts_with(filter) {
+            continue;
+        }
+        suggestions.matches.push(Suggestion {
+            text: info.label.clone(),
+            tooltip: Some(Text::new("click to connect")),
+        });
     }
 }

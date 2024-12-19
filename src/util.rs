@@ -4,10 +4,11 @@ use std::{
 };
 
 use byteorder::{ReadBytesExt, WriteBytesExt};
+use either::Either;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use uuid::Uuid;
 
-use crate::server::encryption::PacketDecryption;
+use crate::{chat::Text, server::{encryption::PacketDecryption, nbt::NbtType}};
 
 pub type DynError = Box<dyn std::error::Error + Send + Sync>;
 pub type Result<T> = std::result::Result<T, DynError>;
@@ -265,6 +266,25 @@ impl EncodingHelper {
         let mut data = Self::need_read_uninit_vec(len);
         src.read_exact(&mut data)?;
         String::from_utf8(data).map_err(|e| IOError::new(IOErrorKind::InvalidData, e))
+    }
+
+    pub fn read_text<R: Read + ?Sized>(src: &mut R, version: i32) -> IOResult<Text> {
+        let nbt = crate::server::nbt::read_networking_nbt(src, version)?;
+        if let Some(nbt_tag) = nbt.left() {
+            if let Some(nbt_tag) = nbt_tag {
+                let json = nbt_tag.to_json();
+                return crate::chat::deserialize_json(&json)
+                    .map_err(|err| IOError::new(IOErrorKind::InvalidData, err));
+            }
+        }
+        Err(IOError::new(IOErrorKind::InvalidData, "Failed to parse text component: Invalid NBT data!"))
+    }
+
+    pub fn write_text<W: Write + ?Sized>(dest: &mut W, version: i32, text: &Text) -> IOResult<()> {
+        let json = crate::chat::serialize_json(text);
+        let nbt = NbtType::from_json(&json)?;
+        crate::server::nbt::write_networking_nbt(dest, version, &Either::Left(Some(nbt)))?;
+        Ok(())
     }
     
     #[inline]

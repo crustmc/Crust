@@ -3,9 +3,58 @@ use lazy_static::lazy_static;
 
 use std::io::{Read, Write};
 
-use crate::{util::{EncodingHelper, IOError, IOErrorKind, IOResult, VarInt}, version::*};
+use crate::{chat::Text, util::{EncodingHelper, IOError, IOErrorKind, IOResult, VarInt}, version::*};
 
 use super::{packet_ids::ServerPacketType, packets::{Packet, ServerPacket}};
+
+#[derive(Debug, Clone)]
+pub struct Suggestions {
+    pub start: i32,
+    pub length: i32,
+    pub matches: Vec<Suggestion>,
+}
+
+impl Suggestions {
+
+    pub fn decode<R: Read + ?Sized>(src: &mut R, version: i32) -> IOResult<Self> {
+        Ok(Self {
+            start: VarInt::decode_simple(src)?.get(),
+            length: VarInt::decode_simple(src)?.get(),
+            matches: {
+                let mut matches = Vec::new();
+                for _ in 0..VarInt::decode_simple(src)?.get() {
+                    matches.push(Suggestion {
+                        text: EncodingHelper::read_string(src, 32767)?,
+                        tooltip: if src.read_u8()? != 0 { Some(EncodingHelper::read_text(src, version)?) } else { None },
+                    });
+                }
+                matches
+            }
+        })
+    }
+
+    pub fn encode<W: Write + ?Sized>(&self, dst: &mut W, version: i32) -> IOResult<()> {
+        VarInt(self.start).encode_simple(dst)?;
+        VarInt(self.length).encode_simple(dst)?;
+        VarInt(self.matches.len() as i32).encode_simple(dst)?;
+        for suggestion in &self.matches {
+            EncodingHelper::write_string(dst, &suggestion.text)?;
+            if let Some(ref tooltip) = suggestion.tooltip {
+                dst.write_u8(1)?;
+                EncodingHelper::write_text(dst, version, tooltip)?;
+            } else {
+                dst.write_u8(0)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Suggestion {
+    pub text: String,
+    pub tooltip: Option<Text>,
+}
 
 #[derive(Debug, Clone)]
 pub struct Commands {

@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use crate::{auth::{GameProfile, Property}, chat::Text, server::nbt, util::{EncodingHelper, IOError, IOErrorKind, IOResult, VarInt}, version::*};
 
-use super::{compression::RefSizeLimitedReader, encryption::{PacketDecryption, PacketEncryption}, nbt::NbtType, packet_ids::{ClientPacketType, PacketRegistry, ServerPacketType}};
+use super::{brigadier::Suggestions, compression::RefSizeLimitedReader, encryption::{PacketDecryption, PacketEncryption}, nbt::NbtType, packet_ids::{ClientPacketType, PacketRegistry, ServerPacketType}};
 
 pub const PROTOCOL_READ_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -815,6 +815,117 @@ impl Packet for SystemChatMessage {
             dst.write_u8(self.pos as u8)?;
         } else {
             VarInt(self.pos).encode_simple(dst)?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct TabCompleteRequest {
+    pub transaction_id: Option<i32>,
+    pub cursor: String,
+    pub assume_command: Option<bool>,
+    pub position: Option<i64>,
+}
+
+impl ClientPacket for TabCompleteRequest {
+    fn get_type(&self) -> ClientPacketType {
+        ClientPacketType::TabCompleteRequest
+    }
+}
+
+impl Packet for TabCompleteRequest {
+
+    fn decode<R: Read + ?Sized>(src: &mut R, version: i32) -> IOResult<Self>
+        where
+            Self: Sized {
+        let transaction_id = if version >= R1_13 { Some(VarInt::decode(src, 5)?.get()) } else { None };
+        let cursor = EncodingHelper::read_string(src, if version > R1_13 { 32500 } else if version == R1_13 { 256 } else { 32767 })?;
+        let mut assume_command = None;
+        let mut position = None;
+        if version < R1_13 {
+            if version >= R1_9 {
+                assume_command = Some(src.read_u8()? != 0);
+            }
+            if src.read_u8()? != 0 {
+                position = Some(src.read_i64::<BE>()?);
+            }
+        }
+        Ok(Self {
+            transaction_id,
+            cursor,
+            assume_command,
+            position,
+        })
+    }
+
+    fn encode<W: Write + ?Sized>(&self, dst: &mut W, version: i32) -> IOResult<()> {
+        if version >= R1_13 {
+            VarInt(self.transaction_id.unwrap()).encode_simple(dst)?;
+        }
+        EncodingHelper::write_string(dst, &self.cursor)?;
+        if version < R1_13 {
+            if version >= R1_9 {
+                dst.write_u8(self.assume_command.unwrap() as u8)?;
+            }
+            if let Some(position) = self.position {
+                dst.write_u8(1)?;
+                dst.write_i64::<BE>(position)?;
+            } else {
+                dst.write_u8(0)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+pub struct TabCompleteResponse {
+    pub transaction_id: Option<i32>,
+    pub suggestions: Option<Suggestions>,
+    pub commands: Option<Vec<String>>,
+}
+
+impl ServerPacket for TabCompleteResponse {
+    fn get_type(&self) -> ServerPacketType {
+        ServerPacketType::TabCompleteResponse
+    }
+}
+
+impl Packet for TabCompleteResponse {
+
+    fn decode<R: Read + ?Sized>(src: &mut R, version: i32) -> IOResult<Self>
+        where
+            Self: Sized {
+        let mut transaction_id = None;
+        let mut suggestions = None;
+        let mut commands = None;
+        if version >= R1_13 {   
+            transaction_id = Some(VarInt::decode_simple(src)?.get());
+            suggestions = Some(Suggestions::decode(src, version)?);
+        } else {
+            let mut list = Vec::new();
+            for _ in 0..VarInt::decode_simple(src)?.get() {
+                list.push(EncodingHelper::read_string(src, 32767)?);
+            }
+            commands = Some(list);
+        }
+        Ok(Self {
+            transaction_id,
+            suggestions,
+            commands,
+        })
+    }
+
+    fn encode<W: Write + ?Sized>(&self, dst: &mut W, version: i32) -> IOResult<()> {
+        if version >= R1_13 {
+            VarInt(self.transaction_id.unwrap()).encode_simple(dst)?;
+            self.suggestions.as_ref().unwrap().encode(dst, version)?;
+        } else {
+            let commands = self.commands.as_ref().unwrap();
+            VarInt(commands.len() as i32).encode_simple(dst)?;
+            for command in commands {
+                EncodingHelper::write_string(dst, command)?;
+            }
         }
         Ok(())
     }

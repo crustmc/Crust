@@ -2,17 +2,20 @@ use std::collections::HashMap;
 
 use crate::chat::Text;
 
-use super::{ProxyServer, SlotId};
+use super::{brigadier::Suggestions, ProxyServer, SlotId};
 
 pub(crate) mod core_impl;
 
 pub type CommandExecutor = fn(sender: &CommandSender, name: &str, args: Vec<&str>);
-pub type CommandTabCompleter = fn(sender: &CommandSender, name: &str, args: Vec<&str>) -> Option<String>;
+pub type CommandTabCompleter = fn(sender: &CommandSender, name: &str, args: Vec<&str>, &mut Suggestions);
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum CommandArgType {
+    /// Splits the command by space and passes the arguments as a vector
     #[default]
     TextSplitBySpace,
+    /// Passes the full command string in ``args[0]`` and the full args string without the command name in ``args[1]``
+    /// And the you also have to calculate the start and length in the ``Suggestions`` struct when tab completing
     Args0ContainsEverything,
 }
 
@@ -127,11 +130,53 @@ impl CommandRegistry {
         self.get_command_by_name(name).map_or(false, |info| {
             let args = parts.next().unwrap_or("");
             let args = match info.arg_type {
-                CommandArgType::TextSplitBySpace => if args.is_empty() { vec![] } else { args.split(' ').collect::<Vec<&str>>() },
-                CommandArgType::Args0ContainsEverything => vec![args],
+                CommandArgType::TextSplitBySpace => if args.is_empty() { vec![] } else { args.split_ascii_whitespace().collect::<Vec<&str>>() },
+                CommandArgType::Args0ContainsEverything => vec![command, args],
             };
             (info.executor)(sender, name, args);
             true
+        })
+    }
+
+    pub fn tab_complete(&self, sender: &CommandSender, command: &str) -> Option<Option<Suggestions>> {
+        if command.is_empty() {
+            return None;
+        }
+        let mut parts = command.splitn(2, ' ');
+        let name = parts.next().unwrap();
+        self.get_command_by_name(name).map_or(None, |info| {
+            let mut suggestions = Suggestions { start: 0, length: 0, matches: Vec::new() };
+            let args = parts.next().unwrap_or("");
+            let args = match info.arg_type {
+                CommandArgType::TextSplitBySpace => {
+                    let mut splitted = if args.is_empty() { vec![] } else { args.split_ascii_whitespace().collect::<Vec<&str>>() };
+                    if command.ends_with(" ") {
+                        suggestions.start = command.len() as i32 + 1;
+                        suggestions.length = 0;
+                        splitted.push("");
+                    } else {
+                        let mut index = command.len();
+                        let mut len = 0;
+                        loop {
+                            index -= 1;
+                            len += 1;
+                            if index == 0 || command.as_bytes()[index] == b' ' {
+                                break;
+                            }
+                        }
+                        suggestions.start = index as i32 + 2;
+                        suggestions.length = len as i32;
+                    }
+                    splitted
+                },
+                CommandArgType::Args0ContainsEverything => vec![command, args],
+            };
+            if let Some(ref completer) = info.tab_completer {
+                completer(sender, name, args, &mut suggestions);
+                Some(Some(suggestions))
+            } else {
+                Some(None)
+            }
         })
     }
 }
