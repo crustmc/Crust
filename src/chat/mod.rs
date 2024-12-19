@@ -1,5 +1,7 @@
 mod json;
 
+use std::fmt::Display;
+
 pub use json::{deserialize_json, serialize_json};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,6 +56,13 @@ impl Text {
             true
         });
         result
+    }
+}
+
+impl Display for Text {
+
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.get_string())
     }
 }
 

@@ -2,9 +2,9 @@ use std::{future::Future, io::Cursor, pin::Pin, sync::{atomic::Ordering, Arc}};
 
 use crate::{chat::Text, server::{packets::{self, Packet}, ProxyServer}, util::IOResult};
 
-use self::commands::Command;
+use self::command::CommandSender;
 
-use super::{brigadier::{ArgumentProperty, CommandNode, CommandNodeType, Commands, StringParserType, SuggestionsType}, commands, packet_ids::{ClientPacketType, PacketRegistry, ServerPacketType}, packets::{ClientSettings, Kick, ProtocolState, SystemChatMessage, UnsignedClientCommand}, proxy_handler::ConnectionHandle, PlayerSyncData, SlotId};
+use super::{brigadier::{ArgumentProperty, CommandNode, CommandNodeType, Commands, StringParserType, SuggestionsType}, command, packet_ids::{ClientPacketType, PacketRegistry, ServerPacketType}, packets::{ClientSettings, Kick, ProtocolState, SystemChatMessage, UnsignedClientCommand}, proxy_handler::ConnectionHandle, PlayerSyncData, SlotId};
 
 pub struct ClientPacketHandler;
 
@@ -29,18 +29,16 @@ impl ClientPacketHandler {
                 ClientPacketType::UnsignedClientCommand => {
                     let packet = UnsignedClientCommand::decode(&mut Cursor::new(buffer), version)?;
                     let line = packet.message;
-                    let mut split: Vec<&str> = line.split_ascii_whitespace().collect();
-                    if split.len() > 0 {
-                        let a = split.get(0).unwrap().to_ascii_lowercase();
-                        let command = a.as_str();
-                        split.remove(0);
-                        match command {
-                            "server" => {
-                                commands::CommandServer::execute(player_id, split).await;
-                                return Ok(false);
-                            }
-                            _ => {}
+                    let success = tokio::task::spawn_blocking(move || { // Needs to be blocking because commands are executed synchronously
+                        if ProxyServer::instance().command_registry().execute(&CommandSender::Player(player_id), &line) {
+                            return true;
+                        } else {
+                            log::debug!("Command not found '{}' passing command to server", line);
                         }
+                        false
+                    }).await?;
+                    if success { // don't forward the command if it was handled by the proxy
+                        return Ok(false);
                     }
                 }
                 _ => {}
@@ -64,7 +62,6 @@ pub fn switch_server_helper(player: SlotId, server_id: SlotId) -> Pin<Box<dyn Fu
     };
     Box::pin(block)
 }
-
 
 pub struct ServerPacketHandler;
 
@@ -92,29 +89,32 @@ impl ServerPacketHandler {
             }
             ServerPacketType::Commands => {
                 let mut commands = Commands::decode(&mut Cursor::new(buffer), version)?;
-                let arg_index = commands.nodes.len();
-                commands.nodes.push(CommandNode {
-                    childrens: Vec::new(),
-                    executable: true,
-                    redirect_index: None,
-                    node_type: CommandNodeType::Argument {
-                        name: "name".to_string(),
-                        parser_id: 5,
-                        properties: Some(ArgumentProperty::String(StringParserType::GreedyPhrase)),
-                        suggestions_type: Some(SuggestionsType::AskServer)
+                for info in ProxyServer::instance().command_registry().all_commands() {
+                    let arg_index = commands.nodes.len();
+                    commands.nodes.push(CommandNode {
+                        childrens: Vec::new(),
+                        executable: true,
+                        redirect_index: None,
+                        node_type: CommandNodeType::Argument {
+                            name: "args".to_string(),
+                            parser_id: 5, // StringArgumentType
+                            properties: Some(ArgumentProperty::String(StringParserType::GreedyPhrase)),
+                            suggestions_type: info.tab_completer.as_ref().map(|_| SuggestionsType::AskServer),
+                        }
+                    });
+                    for name in &info.names {
+                        let node_index = commands.nodes.len();
+                        commands.nodes.push(CommandNode {
+                            childrens: vec![arg_index],
+                            executable: false,
+                            redirect_index: None,
+                            node_type: CommandNodeType::Literal(name.clone()),
+                        });
+                        commands.nodes[commands.root_index].childrens.push(node_index);
                     }
-                });
-                commands.nodes.push(CommandNode {
-                    childrens: vec![arg_index],
-                    executable: false,
-                    redirect_index: None,
-                    node_type: CommandNodeType::Literal("server".to_string()),
-                });
-                let len = commands.nodes.len();
-                commands.nodes[commands.root_index].childrens.push(len - 1);
-                let bert = packets::get_full_server_packet_buf(&commands, version, server_handle.protocol_state()).unwrap();
-                if let Some(bert) = bert {
-                    let _ = client_handle.queue_packet(bert, false).await;
+                }
+                if let Some(packet_buf) = packets::get_full_server_packet_buf(&commands, version, server_handle.protocol_state()).unwrap() {
+                    let _ = client_handle.queue_packet(packet_buf, false).await;
                 }
                 return Ok(false);
             }

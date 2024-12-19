@@ -1,13 +1,14 @@
-use std::{collections::HashMap, io::Cursor, path::{Path, PathBuf}, sync::{atomic::Ordering, Arc}, time::{Duration, Instant}};
+use std::{collections::HashMap, future::Future, io::Cursor, path::{Path, PathBuf}, sync::{atomic::Ordering, Arc}, time::{Duration, Instant}};
 
 use base64::Engine;
+use command::{CommandRegistry, CommandRegistryBuilder};
 use image::{imageops::FilterType, ImageFormat};
 use packets::{PlayerPublicKey, ProtocolState, SystemChatMessage};
 use proxy_handler::{ClientHandle, ConnectionHandle, PlayerSyncData};
 use rsa::{RsaPrivateKey, RsaPublicKey};
 use serde::{Deserialize, Serialize};
 use slotmap::{DefaultKey, SlotMap};
-use tokio::{net::TcpListener, sync::RwLock, task::JoinHandle};
+use tokio::{net::TcpListener, runtime::Runtime, sync::RwLock, task::JoinHandle};
 
 use crate::{auth::GameProfile, chat::Text, util::IOResult};
 
@@ -21,7 +22,7 @@ pub(crate) mod packet_handler;
 pub(crate) mod packet_ids;
 pub(crate) mod proxy_handler;
 pub(crate) mod status;
-pub(crate) mod commands;
+pub(crate) mod command;
 pub(crate) mod nbt;
 
 pub const NAME: &str = "Crust";
@@ -147,7 +148,9 @@ impl ServerList {
 pub type SlotId = DefaultKey;
 
 pub struct ProxyServer {
+    runtime: Runtime,
     config: ProxyConfig,
+    command_registry: CommandRegistry,
     servers: RwLock<ServerList>,
     rsa_priv_key: RsaPrivateKey,
     rsa_pub_key: RsaPublicKey,
@@ -159,9 +162,15 @@ pub struct ProxyServer {
 static mut INSTANCE: Option<ProxyServer> = None;
 
 impl ProxyServer {
+
     #[inline]
     pub fn config(&self) -> &ProxyConfig {
         &self.config
+    }
+
+    #[inline]
+    pub fn command_registry(&self) -> &CommandRegistry {
+        &self.command_registry
     }
 
     #[inline]
@@ -182,6 +191,21 @@ impl ProxyServer {
     #[inline]
     pub fn rsa_public_key(&self) -> &RsaPublicKey {
         &self.rsa_pub_key
+    }
+
+    #[inline]
+    pub fn runtime(&self) -> &Runtime {
+        &self.runtime
+    }
+
+    #[inline]
+    pub fn block_on<F: Future<Output = T>, T>(&self, future: F) -> T {
+        self.runtime.block_on(future)
+    }
+
+    #[inline]
+    pub fn spawn_task<F: Future<Output = T> + Send + 'static, T: Send + 'static>(&self, future: F) -> JoinHandle<T> {
+        self.runtime.spawn(future)
     }
 
     pub fn instance() -> &'static Self {
@@ -286,8 +310,12 @@ pub fn run_server() {
         });
     }
 
+    let commands = command::core_impl::register_all(CommandRegistryBuilder::new());
+
     unsafe {
         INSTANCE = Some(ProxyServer {
+            runtime,
+            command_registry: commands.build(),
             rsa_priv_key: priv_key,
             rsa_pub_key: pub_key,
             servers: RwLock::new(server_list),
@@ -298,7 +326,7 @@ pub fn run_server() {
         });
     }
 
-    runtime.block_on(async move {
+    ProxyServer::instance().block_on(async move {
         let listener = TcpListener::bind(&ProxyServer::instance().config.bind_address).await.unwrap();
         log::info!("Listening on {}", listener.local_addr().unwrap());
         let mut map = HashMap::new();
