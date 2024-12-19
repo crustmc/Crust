@@ -54,6 +54,7 @@ You should firewall your ports or bind you backend servers locally, otherwise so
 - [ ] limbo
 - [x] configurable connection throttle
 - [x] logging system
+- [ ] support BungeeCord plugin messaging
 
 ## Build
 
