@@ -1,11 +1,11 @@
-# Crust
+# Crust 🥧
 
 Crust is a Minecraft Layer 7 Reverse Proxy that aims for pure performance and rich features.
 
 The software is written in Rust only and in an early development stage. We are currently supporting all minecraft
 versions starting at 1.20.2. We aim to improve the protocol support to 1.8 and up
 
-## Download and Installation
+## Download and Installation 💿
 
 Currently Linux aarch64 and x86_64 are available in compiled form.
 
@@ -25,17 +25,17 @@ Run Crust
 
 You can also run it inside a screen or container
 
-## Configuration
+## Configuration ⚙️
 
 After the server is started for the first time a config.json file will be created in the same folder as the executable.
 
 Right now you need to restart to apply config changes.
 
-## Security
+## Security 🔗
 
-You should firewall your ports or bind you backend servers locally, otherwise someone could join your backend servers.
+You should firewall the ports of you backend servers or bind you backend servers locally, otherwise someone could join your backend servers without authentication.
 
-## Features
+## Features 📃
 
 - [x] Joining to, forwarding and switching server
 - [x] configurable packet limiter
@@ -59,7 +59,7 @@ You should firewall your ports or bind you backend servers locally, otherwise so
 - [ ] support BungeeCord plugin messaging
 - [ ] redis
 
-## Build
+## Build 🔨
 
 install rust and cargo
 clone this repo
@@ -67,7 +67,7 @@ clone this repo
 run the following command in the repos directory:
 cargo build --release
 
-## Contribute
+## Contribute 🖋️
 
 If you want to contribute just fork the project and create a Pull Request
 Our team will take a look at your work and will decide if it will be merged or need changes real quick
