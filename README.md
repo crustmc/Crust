@@ -37,31 +37,41 @@ You should firewall your ports or bind you backend servers locally, otherwise so
 
 - [x] Joining to, forwarding and switching server
 - [x] configurable packet limiter
-- [x] configurable fallback system
+- [x] configurable fallback system (server priority system)
 - [x] simple /server command
 - [x] compression and encryption support for client and server connections
 - [x] online and Offline Mode support
 - [x] spigot data/ip forwarding support
-- [ ] HA-Proxy support
+- [x] configurable connection throttle
+- [x] logging system
 - [x] de-/serializing NBT
 - [x] de-/serializing Chat components
 - [x] versioning in binary file
-- [ ] inject into Commands packet to make our commands tabable.
+- [ ] inject into Commands packet to make our commands tabable. (nearly done)
+- [ ] HA-Proxy support
 - [ ] add a plugin system with API and events
 - [ ] simple permission system
 - [ ] good terminal UI
 - [ ] command system
 - [ ] limbo
-- [x] configurable connection throttle
-- [x] logging system
 - [ ] support BungeeCord plugin messaging
+- [ ] redis
 
 ## Build
 
 install rust and cargo
 clone this repo
 
-run this command in the repos directory:
+run the following command in the repos directory:
 cargo build --release
+
+## Contribute
+
+If you want to contribute just fork the project and create a Pull Request
+Our team will take a look at your work and will decide if it will be merged or need changes real quick
+
+## Support us ⭐️
+
+If you're interested in this project, we would appreciate it very much if you would star the repository
 
 
