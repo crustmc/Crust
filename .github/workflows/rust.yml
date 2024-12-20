@@ -34,7 +34,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Build
-      run: .cargo/bin/cargo build --release --target aarch64-unknown-linux-musl --verbose
+      run: /home/bert/.cargo/bin/cargo build --release --target aarch64-unknown-linux-musl --verbose
     - name: Save artifacts
       uses: actions/upload-artifact@v4
       with:
