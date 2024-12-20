@@ -30,7 +30,7 @@ jobs:
         path: target/x86_64-unknown-linux-musl/release/crust
         
   build-linux-aarch64:
-    runs-on: "aarch64 linux"
+    runs-on: self-hosted
     steps:
     - uses: actions/checkout@v4
     - name: Install Rust
