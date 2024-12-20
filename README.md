@@ -14,7 +14,7 @@ Download the binary file that matches your OS on [Jenkins](https://ci.outfluence
 make the file executeable
 
 ```bash
-  chmod 777 crust-linux-x86_64
+  chmod +x crust-linux-x86_64
 ```
 
 Run Crust
