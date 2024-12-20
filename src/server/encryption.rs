@@ -1,35 +1,58 @@
-use aes::{cipher::{inout::InOutBuf, BlockDecryptMut, BlockEncryptMut, KeyIvInit}, Aes128};
+//use aes::{cipher::{inout::InOutBuf, BlockDecryptMut, BlockEncryptMut, KeyIvInit}, Aes128};
+
+use openssl::symm::{Cipher, Crypter, Mode};
 
 pub struct PacketEncryption {
-    cipher: cfb8::Encryptor<Aes128>,
+    cipher: Crypter,
 }
 
 impl PacketEncryption {
     pub fn new(key: &[u8; 16]) -> Self {
         Self {
-            cipher: cfb8::Encryptor::new(key.into(), key.into()),
+            cipher: Crypter::new(
+                Cipher::aes_128_cfb8(),
+                Mode::Encrypt,
+                key,
+                Some(key),
+            )
+            .unwrap(),
         }
     }
-
+    #[warn(clippy::transmute_ptr_to_ref)]
     pub fn encrypt(&mut self, data: &mut [u8]) {
-        let (in_out, _) = InOutBuf::from(data).into_chunks();
-        self.cipher.encrypt_blocks_inout_mut(in_out);
+        unsafe {
+            self.cipher.update(
+                core::mem::transmute::<_, &mut [u8]>(data as *mut [u8]),
+                data,
+            ).unwrap();
+        }
     }
 }
 
 pub struct PacketDecryption {
-    cipher: cfb8::Decryptor<Aes128>,
+    cipher: Crypter
 }
 
 impl PacketDecryption {
+    
     pub fn new(key: &[u8; 16]) -> Self {
         Self {
-            cipher: cfb8::Decryptor::new(key.into(), key.into()),
+            cipher: Crypter::new(
+                Cipher::aes_128_cfb8(),
+                Mode::Decrypt,
+                key,
+                Some(key),
+            ).unwrap(),
         }
     }
 
+    #[warn(clippy::transmute_ptr_to_ref)]
     pub fn decrypt(&mut self, data: &mut [u8]) {
-        let (in_out, _) = InOutBuf::from(data).into_chunks();
-        self.cipher.decrypt_blocks_inout_mut(in_out);
+        unsafe {
+            self.cipher.update(
+                core::mem::transmute::<_, &mut [u8]>(data as *mut [u8]),
+                data,
+            ).unwrap();
+        }
     }
 }
