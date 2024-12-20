@@ -301,6 +301,7 @@ impl EncodingHelper {
     }
 
     #[inline(always)]
+    #[allow(clippy::uninit_vec)]
     pub fn need_read_uninit_vec(len: usize) -> Vec<u8> {
         let mut data = Vec::with_capacity(len);
         unsafe { data.set_len(len); }

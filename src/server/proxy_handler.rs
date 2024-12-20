@@ -64,7 +64,7 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
         packets::get_full_server_packet_buf_write_buffer(&mut buf, &Kick {
             text: Text::new("§cNo server found for you to connect")
         }, data.version, data.protocol_state).unwrap();
-        encode_and_send_packet(&mut stream, &buf, &mut vec![], data.compression_threshold, &mut encryption).await.unwrap();
+        encode_and_send_packet(&mut stream, &buf, &mut vec![], data.compression_threshold, &mut encryption).await.ok();
         return;
     }
 
