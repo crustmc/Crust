@@ -25,3 +25,9 @@ jobs:
       run: sudo apt-get install -y musl-tools
     - name: Build
       run: cargo build --release --target x86_64-unknown-linux-musl --verbose
+      
+    - name: Save artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: rust-minecraft-proxy
+        path: target/x86_64-unknown-linux-musl/release/rust-minecraft-proxy
