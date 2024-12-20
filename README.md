@@ -68,7 +68,7 @@ run the following command in the repos directory:
 cargo build --release
 
 ## Contribute 🖋️
-
+ 
 If you want to contribute just fork the project and create a Pull Request
 Our team will take a look at your work and will decide if it will be merged or need changes real quick
 
