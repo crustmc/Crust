@@ -38,7 +38,7 @@ fn server_command(sender: &CommandSender, _name: &str, args: Vec<&str>) {
         drop(servers);
         sender.send_message(builder);
     } else {
-        let server_name = args.first().unwrap().to_ascii_lowercase();
+        let server_name = args.first().unwrap();
         let servers = ProxyServer::instance().servers.blocking_read();
         let server = servers.get_server_id_by_name(&server_name);
         if let Some(server_id) = server {
