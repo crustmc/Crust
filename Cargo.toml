@@ -27,7 +27,7 @@ cfb8 = "0.8.1"
 digest = "0.10.7"
 either = "1.13.0"
 env_logger = "0.11.5"
-flate2 = { version = "1.0.35", features = ["zlib-ng"], default-features = false }
+
 hex = "0.4.3"
 image = "0.25.5"
 lazy_static = "1.5.0"
@@ -47,3 +47,10 @@ uuid = { version = "1.11.0", features = ["v4"] }
 reqwest = { version = "0.12.9", default-features = false, features = ["rustls-tls"] }
 paste = "1.0.15"
 const_format = "0.2.34"
+
+[target.aarch64-unknown-linux-musl.dependencies]
+flate2 = { version = "1.0.35", features = ["zlib-ng"], default-features = false }
+[target.not-aarch64-unknown-linux-musl.dependencies]
+flate2 = { version = "1.0.35" }
+
+
