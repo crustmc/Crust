@@ -19,15 +19,15 @@ strip = true
 codegen-units = 1
 
 [dependencies]
-aes = "0.8.4"
+#aes = "0.8.4"
 base64 = "0.22.1"
 byteorder = "1.5.0"
 cesu8 = "1.1.0"
-cfb8 = "0.8.1"
+#cfb8 = "0.8.1"
+openssl = { version = "0.10", features = ["vendored"] }
 digest = "0.10.7"
 either = "1.13.0"
 env_logger = "0.11.5"
-
 hex = "0.4.3"
 image = "0.25.5"
 lazy_static = "1.5.0"
