@@ -299,10 +299,12 @@ async fn finish_login(stream: &mut TcpStream, profile: GameProfile, version: i32
     buffers.write_buf.clear();
     buffers.protocol_buf.clear();
     *compression = ProxyServer::instance().config().compression_threshold;
-    packets::get_full_server_packet_buf_write_buffer(buffers.write_buf, &SetCompression {
-        compression: *compression
-    }, version, ProtocolState::Login)?;
-    encode_and_send_packet(stream, buffers.write_buf, buffers.protocol_buf, -1, encryption).await?;
+    if *compression >= 0 {
+        packets::get_full_server_packet_buf_write_buffer(buffers.write_buf, &SetCompression {
+            compression: *compression
+        }, version, ProtocolState::Login)?;
+        encode_and_send_packet(stream, buffers.write_buf, buffers.protocol_buf, -1, encryption).await?;
+    }
 
     buffers.write_buf.clear();
     buffers.protocol_buf.clear();
