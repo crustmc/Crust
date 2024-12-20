@@ -47,10 +47,9 @@ uuid = { version = "1.11.0", features = ["v4"] }
 reqwest = { version = "0.12.9", default-features = false, features = ["rustls-tls"] }
 paste = "1.0.15"
 const_format = "0.2.34"
-
-[target.aarch64-unknown-linux-musl.dependencies]
+[target.'cfg(target_arch = "aarch64")'.dependencies]
 flate2 = { version = "1.0.35", features = ["zlib-ng"], default-features = false }
-[target.not-aarch64-unknown-linux-musl.dependencies]
+[target.'cfg(not(target_arch = "aarch64"))'.dependencies]
 flate2 = { version = "1.0.35" }
 
 
