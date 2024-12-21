@@ -49,12 +49,12 @@ You should firewall the ports of you backend servers or bind you backend servers
 - [x] de-/serializing NBT
 - [x] de-/serializing Chat components
 - [x] versioning in binary file
-- [ ] inject into Commands packet to make our commands tabable. (nearly done)
+- [x] inject into Commands packet to make our commands tabable
 - [ ] HA-Proxy support
 - [ ] add a plugin system with API and events
 - [ ] simple permission system
 - [ ] good terminal UI
-- [ ] command system
+- [x] command system
 - [ ] limbo
 - [ ] support BungeeCord plugin messaging
 - [ ] redis
