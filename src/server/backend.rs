@@ -110,7 +110,7 @@ impl EstablishedBackend {
                     compression_threshold,
                     &mut decryption,
                 ).await;
-                
+
                 if let Err(e) = res {
                     self_handle.disconnect(&e.to_string()).await;
                     break;
@@ -187,7 +187,7 @@ impl EstablishedBackend {
             None,
             address,
         );
-        
+
         log::info!("[{}] <-> [{}]: connected", player_name, server_name);
 
         let disconnect_lock = handle.disconnect_wait.clone();

@@ -17,8 +17,9 @@ pub enum ServerPacketType {
     LoginSuccess, // login
     SetCompression, // login
 
-    Kick, // config, game
     StartConfiguration, // game
+    Kick, // config, game
+    ServerCustomPayload,
     FinishConfiguration, // config
     BundleDelimiter, // game
     SystemChatMessage, // game
@@ -37,6 +38,8 @@ pub enum ClientPacketType {
     CookieResponse,
 
     LoginAcknowledged, // last packet before config mode
+
+    ClientCustomPayload, // config / game
 
     ConfigurationAck, // game
     FinishConfiguration, // config
@@ -186,6 +189,13 @@ impl PacketRegistry {
                 Client, Config, ClientSettings;
                 (R1_20_2, 0x00)
             }
+
+            begin! {
+                Client, Config, ClientCustomPayload;
+                (R1_20_2, 0x01)
+                (R1_20_5, 0x02)
+            }
+            
             begin! {
                 Client, Config, FinishConfiguration;
                 (R1_20_2, 0x02)
@@ -195,6 +205,11 @@ impl PacketRegistry {
             begin! {
                 Server, Config, CookieRequest;
                 (R1_20_5, 0x00)
+            }
+            begin! {
+                Server, Config, ServerCustomPayload;
+                (R1_20_2, 0x00)
+                (R1_20_5, 0x01)
             }
 
             begin! {
@@ -246,9 +261,47 @@ impl PacketRegistry {
             }
 
             begin! {
+                Client, Game, ClientCustomPayload;
+                (R1_8, 0x17 )
+                (R1_9, 0x09 )
+                (R1_12, 0x0A )
+                (R1_12_1, 0x09 )
+                (R1_13, 0x0A )
+                (R1_14, 0x0B )
+                (R1_17, 0x0A )
+                (R1_19, 0x0C )
+                (R1_19_1, 0x0D )
+                (R1_19_3, 0x0C )
+                (R1_19_4, 0x0D )
+                (R1_20_2, 0x0F )
+                (R1_20_3, 0x10 )
+                (R1_20_5, 0x12 )
+                (R1_21_2, 0x14 )
+            }
+
+            begin! {
                 Server, Game, CookieRequest;
                 (R1_20_5, 0x16)
             }
+
+            begin! {
+                Server, Game, ServerCustomPayload;
+                (R1_8, 0x3F )
+                (R1_9, 0x18 )
+                (R1_13, 0x19 )
+                (R1_14, 0x18 )
+                (R1_15, 0x19 )
+                (R1_16, 0x18 )
+                (R1_16_2, 0x17 )
+                (R1_17, 0x18 )
+                (R1_19, 0x15 )
+                (R1_19_1, 0x16 )
+                (R1_19_3, 0x15 )
+                (R1_19_4, 0x17 )
+                (R1_20_2, 0x18 )
+                (R1_20_5, 0x19 )
+            }
+            
             begin! {
                 Server, Game, Kick;
                 (R1_8, 0x40)

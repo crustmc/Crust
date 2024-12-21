@@ -514,6 +514,92 @@ impl Packet for LoginSuccess {
     }
 }
 
+#[derive(Debug)]
+pub struct ClientCustomPayload {
+    pub channel: String,
+    pub data: Vec<u8>,
+}
+
+impl ClientCustomPayload {
+    pub fn data_to_utf8(&self) -> String {
+        String::from_utf8_lossy(&self.data).into_owned()
+    }
+    pub fn data_to_hex(&self) -> String {
+        self.data.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join("")
+    }
+}
+
+impl ClientPacket for ClientCustomPayload {
+    fn get_type(&self) -> ClientPacketType {
+        ClientPacketType::ClientCustomPayload
+    }
+}
+
+impl Packet for ClientCustomPayload {
+    fn decode<R: Read + ?Sized>(src: &mut R, version: i32) -> IOResult<Self>
+    where
+        Self: Sized,
+    {
+        let channel = EncodingHelper::read_string(src, if version >= R1_13 { u16::MAX as usize } else { 20 })?;
+        let mut data = Vec::new();
+        src.read_to_end(&mut data)?;
+        if data.len()  > u16::MAX as usize {
+            Err(IOError::new(IOErrorKind::InvalidData, "Payload too large"))?
+        }
+        Ok(Self { channel, data })
+    }
+
+    fn encode<W: Write + ?Sized>(&self, dst: &mut W, _: i32) -> IOResult<()> {
+        EncodingHelper::write_string(dst, &self.channel)?;
+        dst.write_all(&self.data)?;
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct ServerCustomPayload {
+    pub channel: String,
+    pub data: Vec<u8>,
+}
+
+impl ServerCustomPayload {
+    pub fn data_to_utf8(&self) -> String {
+        String::from_utf8_lossy(&self.data).into_owned()
+    }
+    pub fn data_to_hex(&self) -> String {
+        self.data.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join("")
+    }
+}
+
+impl ServerPacket for ServerCustomPayload {
+    fn get_type(&self) -> ServerPacketType {
+        ServerPacketType::ServerCustomPayload
+    }
+}
+
+impl Packet for ServerCustomPayload {
+    
+    fn decode<R: Read + ?Sized>(src: &mut R, version: i32) -> IOResult<Self>
+    where
+        Self: Sized,
+    {
+        let channel = EncodingHelper::read_string(src, if version >= R1_13 { u16::MAX as usize } else { 20 })?;
+        let mut data = Vec::new();
+        src.read_to_end(&mut data)?;
+        if data.len()  > 0x100000 {
+            Err(IOError::new(IOErrorKind::InvalidData, "Payload too large"))?
+        }
+        Ok(Self { channel, data })
+    }
+
+    fn encode<W: Write + ?Sized>(&self, dst: &mut W, _: i32) -> IOResult<()> {
+        EncodingHelper::write_string(dst, &self.channel)?;
+        dst.write_all(&self.data)?;
+        Ok(())
+    }
+    
+}
+
 pub struct LoginPluginRequest {
     pub id: i32,
     pub channel: String,

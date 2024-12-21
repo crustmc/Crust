@@ -1,5 +1,3 @@
-//use aes::{cipher::{inout::InOutBuf, BlockDecryptMut, BlockEncryptMut, KeyIvInit}, Aes128};
-
 use openssl::symm::{Cipher, Crypter, Mode};
 
 pub struct PacketEncryption {
@@ -28,7 +26,6 @@ impl PacketEncryption {
         }
     }
 }
-
 pub struct PacketDecryption {
     cipher: Crypter
 }

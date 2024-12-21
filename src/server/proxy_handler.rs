@@ -3,6 +3,7 @@ use std::fmt::Display;
 use tokio::{net::{tcp::OwnedReadHalf, TcpStream}, sync::{mpsc::Sender, Mutex, Notify, RwLock}, task::AbortHandle};
 
 use crate::{auth::GameProfile, chat::Text, server::{packet_ids::{PacketRegistry, ServerPacketType}, packets::{self, encode_and_send_packet, read_and_decode_packet, Kick}, ProxiedPlayer}, util::VarInt};
+use crate::server::packets::ClientCustomPayload;
 use crate::util::{IOError, IOResult};
 use super::{encryption::{PacketDecryption, PacketEncryption}, packet_handler::ClientPacketHandler, packets::{ClientSettings, PlayerPublicKey, ProtocolState}, ProxyServer, SlotId};
 
@@ -20,6 +21,7 @@ pub(crate) struct PlayerSyncData {
     pub is_switching_server: AtomicBool,
     pub config_ack_notify: Notify,
     pub client_settings: Mutex<Option<ClientSettings>>,
+    pub brand_packet: Mutex<Option<ClientCustomPayload>>,
     pub version: i32,
 }
 
@@ -131,6 +133,7 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
         is_switching_server: AtomicBool::new(false),
         config_ack_notify: Notify::new(),
         client_settings: Mutex::new(None),
+        brand_packet: Mutex::new(None),
         version: data.version,
     });
     let handle = ConnectionHandle::new(display_name.clone(), sender, read, data.protocol_state, write_task.abort_handle(), compression_threshold, decryption, Some(player_sync_data.clone()), data.address);
