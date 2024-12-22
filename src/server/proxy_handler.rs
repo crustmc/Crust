@@ -2,10 +2,10 @@ use std::{io::Cursor, net::SocketAddr, ops::DerefMut, sync::{atomic::{AtomicBool
 use std::fmt::Display;
 use tokio::{net::{tcp::OwnedReadHalf, TcpStream}, sync::{mpsc::Sender, Mutex, Notify, RwLock}, task::AbortHandle};
 
-use crate::{auth::GameProfile, chat::Text, server::{packet_ids::{PacketRegistry, ServerPacketType}, packets::{self, encode_and_send_packet, read_and_decode_packet, Kick}, ProxiedPlayer}, util::VarInt};
+use crate::{auth::GameProfile, chat::Text, server::{packet_ids::{PacketRegistry, ServerPacketType}, packets::{self, encode_and_send_packet, read_and_decode_packet, Kick}, ProxiedPlayer}, util::{Handle, VarInt, WeakHandle}};
 use crate::server::packets::ClientCustomPayload;
 use crate::util::{IOError, IOResult};
-use super::{encryption::{PacketDecryption, PacketEncryption}, packet_handler::ClientPacketHandler, packets::{ClientSettings, PlayerPublicKey, ProtocolState}, ProxyServer, SlotId};
+use super::{encryption::{PacketDecryption, PacketEncryption}, packet_handler::ClientPacketHandler, packets::{ClientSettings, PlayerPublicKey, ProtocolState}, ProxyServer};
 
 pub(crate) struct ProxyingData {
     pub profile: GameProfile,
@@ -22,11 +22,11 @@ pub(crate) struct PlayerSyncData {
     pub config_ack_notify: Notify,
     pub client_settings: Mutex<Option<ClientSettings>>,
     pub brand_packet: Mutex<Option<ClientCustomPayload>>,
-    pub version: i32,
 }
 
 pub struct ClientHandle {
-    pub player_id: SlotId,
+    pub player: WeakHandle<ProxiedPlayer>,
+    pub version: i32,
     pub connection: ConnectionHandle,
 }
 
@@ -128,17 +128,16 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
         }
     });
 
-    let player_sync_data = Arc::new(PlayerSyncData {
+    let player_sync_data = PlayerSyncData {
         is_switching_server: AtomicBool::new(false),
         config_ack_notify: Notify::new(),
         client_settings: Mutex::new(None),
         brand_packet: Mutex::new(None),
-        version: data.version,
-    });
-    let handle = ConnectionHandle::new(display_name.clone(), sender, read, data.protocol_state, write_task.abort_handle(), compression_threshold, decryption, Some(player_sync_data.clone()), data.address);
+    };
+    let handle = ConnectionHandle::new(display_name.clone(), sender, read, data.protocol_state, write_task.abort_handle(), compression_threshold, decryption, data.address);
     let disconnect_lock = handle.disconnect_wait.clone();
 
-    let player = ProxiedPlayer {
+    let mut player = Handle::new(ProxiedPlayer {
         player_id: unsafe {
             #[allow(
                 invalid_value
@@ -150,11 +149,11 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
         protocol_version: data.version,
         server_handle: None,
         player_public_key: data.player_public_key,
-        sync_data: player_sync_data.clone(),
-    };
+        sync_data: player_sync_data,
+    });
     let player_id = {
         let mut players = ProxyServer::instance().players().write().await;
-        let player_id = players.insert(player);
+        let player_id = players.insert(player.clone());
         *unsafe { core::mem::transmute::<_, &mut usize>(&ProxyServer::instance().player_count as *const usize) } += 1;
         players.get_mut(player_id).unwrap().player_id = player_id;
         drop(players);
@@ -162,11 +161,12 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
     };
 
     let handle = ClientHandle {
-        player_id,
+        player: player.downgrade(),
+        version: data.version,
         connection: handle,
     };
     let con_handle = handle.connection.clone();
-    let (_backend_profile, backend_handle) = backend.begin_proxying(&server_name, handle, player_sync_data).await;
+    let (_backend_profile, backend_handle) = backend.begin_proxying(&server_name, handle).await;
 
     tokio::spawn(async move {
         let disconnect_guard = disconnect_lock.write().await;
@@ -183,23 +183,16 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
         }
         drop(disconnect_guard);
     });
-    let mut lock = ProxyServer::instance().players().write().await;
-    if let Some(player) = lock.get_mut(player_id) {
-        player.server_handle = Some(backend_handle.clone());
-    } else {
-        return;
-    }
-    drop(lock);
+    player.server_handle = Some(backend_handle.clone());
 
-    con_handle.spawn_read_task(true, display_name, backend_handle, player_id, data.version).await;
+    con_handle.spawn_read_task(true, display_name, backend_handle, player.downgrade(), data.version).await;
 }
 
-async fn read_task(packet_limit: bool, _display_name: String, partner: ConnectionHandle, self_handle: ConnectionHandle, player_id: SlotId, version: i32, sync_data: Option<Arc<PlayerSyncData>>) {
+async fn read_task(packet_limit: bool, _display_name: String, partner: ConnectionHandle, self_handle: ConnectionHandle, player: WeakHandle<ProxiedPlayer>, version: i32) {
     let mut read_buf = Vec::new();
     let mut protocol_buf = Vec::new();
     let mut read = self_handle.reader.lock().await;
     let mut decryption = self_handle.decryption.lock().await;
-    let sync_data = sync_data.unwrap();
     let mut packet_per_second = 0usize;
     let mut last_second = SystemTime::now();
     let mut should_forward = true;
@@ -232,7 +225,7 @@ async fn read_task(packet_limit: bool, _display_name: String, partner: Connectio
             break;
         }
         let packet_id = packet_id.unwrap().get();
-        let res = ClientPacketHandler::handle_packet(packet_id, &read_buf[VarInt::get_size(packet_id)..], version, player_id, &self_handle, &sync_data).await;
+        let res = ClientPacketHandler::handle_packet(packet_id, &read_buf[VarInt::get_size(packet_id)..], version, &player, &self_handle).await;
         if let Err(e) = res {
             partner.disconnect(&e.to_string()).await;
             self_handle.disconnect(&e.to_string()).await;
@@ -267,7 +260,6 @@ pub struct ConnectionHandle {
     write_task: AbortHandle,
     pub(crate) read_task: Arc<Mutex<Option<AbortHandle>>>,
     pub(crate) disconnect_wait: Arc<RwLock<()>>,
-    sync_data: Option<Arc<PlayerSyncData>>,
     pub address: SocketAddr,
     pub(crate) closed: Arc<AtomicBool>,
 
@@ -281,7 +273,7 @@ impl Display for ConnectionHandle {
 
 impl ConnectionHandle {
     pub(crate) fn new(name: String, sender: Sender<PacketSending>, reader: OwnedReadHalf, protocol_state: ProtocolState, write_task: AbortHandle,
-                      compression_threshold: i32, decryption: Option<PacketDecryption>, sync_data: Option<Arc<PlayerSyncData>>, address: SocketAddr) -> Self {
+                      compression_threshold: i32, decryption: Option<PacketDecryption>, address: SocketAddr) -> Self {
         Self {
             name,
             sender,
@@ -292,7 +284,6 @@ impl ConnectionHandle {
             decryption: Arc::new(Mutex::new(decryption)),
             protocol_state: Arc::new(AtomicU8::new(protocol_state as u8)),
             disconnect_wait: Arc::new(RwLock::new(())),
-            sync_data,
             address,
             closed: Arc::new(AtomicBool::new(false)),
         }
@@ -306,12 +297,12 @@ impl ConnectionHandle {
         self.protocol_state.store(state as u8, Ordering::Relaxed);
     }
     
-    pub(crate) async fn spawn_read_task(&self, packet_limiter: bool, display_name: String, partner: ConnectionHandle, player_id: SlotId, version: i32) {
+    pub(crate) async fn spawn_read_task(&self, packet_limiter: bool, display_name: String, partner: ConnectionHandle, player: WeakHandle<ProxiedPlayer>, version: i32) {
         let mut old_read_task = self.read_task.lock().await;
         if old_read_task.is_some() {
             panic!("Read task already running!");
         }
-        let read_task = tokio::spawn(read_task(packet_limiter, display_name, partner, self.clone(), player_id, version, self.sync_data.clone()));
+        let read_task = tokio::spawn(read_task(packet_limiter, display_name, partner, self.clone(), player, version));
         old_read_task.replace(read_task.abort_handle());
     }
     

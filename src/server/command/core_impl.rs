@@ -15,7 +15,7 @@ fn server_command(sender: &CommandSender, _name: &str, args: Vec<&str>) {
         sender.send_message(TextBuilder::new("This command can only be executed by a player").style(Style::empty().with_color(TextColor::Red)));
         return;
     }
-    let player_id = sender.as_player().unwrap();
+    let player = sender.as_player().unwrap();
     if args.is_empty() {
         let servers = ProxyServer::instance().servers.blocking_read();
         let mut first = true;
@@ -43,7 +43,7 @@ fn server_command(sender: &CommandSender, _name: &str, args: Vec<&str>) {
         let server = servers.get_server_id_by_name(&server_name);
         if let Some(server_id) = server {
             drop(servers);
-            ProxyServer::instance().block_on(crate::server::packet_handler::switch_server_helper(player_id, server_id));
+            ProxyServer::instance().block_on(crate::server::packet_handler::switch_server_helper(player, server_id));
         } else {
             drop(servers);
             sender.send_message(TextBuilder::new(format!("The server {} does not exist", server_name))

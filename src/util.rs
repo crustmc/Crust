@@ -1,6 +1,6 @@
 use std::{
     io::{Read, Write},
-    ops::{Deref, DerefMut},
+    ops::{Deref, DerefMut}, sync::{Arc, Weak},
 };
 
 use byteorder::{ReadBytesExt, WriteBytesExt};
@@ -298,4 +298,68 @@ impl EncodingHelper {
         data
     }
     
+}
+
+pub struct Handle<T> {
+    inner: Arc<T>,
+}
+
+impl<T> Handle<T> {
+
+    pub fn new(inner: T) -> Self {
+        Self { inner: Arc::new(inner) }
+    }
+
+    pub fn downgrade(&self) -> WeakHandle<T> {
+        WeakHandle::new(Arc::downgrade(&self.inner))
+    }
+
+    pub fn get_mut<'a>(&'a self) -> &'a mut T {
+        #[allow(invalid_reference_casting)]
+        unsafe { &mut *core::mem::transmute::<_, *mut T>(self.inner.deref() as *const T) }
+    }
+}
+
+impl<T> Clone for Handle<T> {
+
+    fn clone(&self) -> Self {
+        Self { inner: self.inner.clone() }
+    }
+}
+
+impl<T> Deref for Handle<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl<T> DerefMut for Handle<T> {
+
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.get_mut()
+    }
+}
+
+pub struct WeakHandle<T> {
+    inner: Weak<T>,
+}
+
+impl<T> WeakHandle<T> {
+
+    pub fn new(inner: Weak<T>) -> Self {
+        Self { inner }
+    }
+
+    pub fn upgrade(&self) -> Option<Handle<T>> {
+        self.inner.upgrade().map(|inner| Handle { inner })
+    }
+}
+
+impl<T> Clone for WeakHandle<T> {
+
+    fn clone(&self) -> Self {
+        Self { inner: self.inner.clone() }
+    }
 }

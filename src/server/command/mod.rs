@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
-use crate::chat::Text;
+use crate::{chat::Text, util::WeakHandle};
 
-use super::{brigadier::Suggestions, ProxyServer, SlotId};
+use super::{brigadier::Suggestions, ProxiedPlayer, ProxyServer};
 
 pub(crate) mod core_impl;
 
@@ -183,7 +183,7 @@ impl CommandRegistry {
 
 pub enum CommandSender {
     Console,
-    Player(SlotId),
+    Player(WeakHandle<ProxiedPlayer>),
 }
 
 impl CommandSender {
@@ -202,9 +202,9 @@ impl CommandSender {
         }
     }
 
-    pub fn as_player(&self) -> Option<SlotId> {
+    pub fn as_player(&self) -> Option<WeakHandle<ProxiedPlayer>> {
         match self {
-            CommandSender::Player(id) => Some(*id),
+            CommandSender::Player(p) => Some(p.clone()),
             _ => None,
         }
     }
@@ -216,9 +216,8 @@ impl CommandSender {
     pub async fn send_message_async(&self, message: Text) {
         match self {
             CommandSender::Console => log::info!("{}", message),
-            CommandSender::Player(id) => {
-                let players = ProxyServer::instance().players().read().await;
-                if let Some(player) = players.get(*id) {
+            CommandSender::Player(player) => {
+                if let Some(player) = player.upgrade() {
                     let _ = player.send_message(message).await;
                 }
             },

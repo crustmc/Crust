@@ -1,36 +1,42 @@
-use std::{future::Future, io::Cursor, pin::Pin, sync::{atomic::Ordering, Arc}};
+use std::{future::Future, io::Cursor, pin::Pin, sync::atomic::Ordering};
 
-use crate::{chat::Text, server, server::{packets::{self, Packet}, ProxyServer}, util::IOResult};
+use crate::{chat::Text, server::{self, packets::{self, Packet}, ProxyServer}, util::{IOResult, WeakHandle}};
 use crate::server::packets::{ClientCustomPayload, ServerCustomPayload};
 use crate::util::EncodingHelper;
 use crate::version::R1_13;
 use self::{command::CommandSender, packets::{TabCompleteRequest, TabCompleteResponse}};
 
-use super::{brigadier::{ArgumentProperty, CommandNode, CommandNodeType, Commands, StringParserType, SuggestionsType}, command, packet_ids::{ClientPacketType, PacketRegistry, ServerPacketType}, packets::{ClientSettings, Kick, ProtocolState, SystemChatMessage, UnsignedClientCommand}, proxy_handler::ConnectionHandle, PlayerSyncData, SlotId};
+use super::{brigadier::{ArgumentProperty, CommandNode, CommandNodeType, Commands, StringParserType, SuggestionsType}, command, packet_ids::{ClientPacketType, PacketRegistry, ServerPacketType}, packets::{ClientSettings, Kick, ProtocolState, SystemChatMessage, UnsignedClientCommand}, proxy_handler::ConnectionHandle, ProxiedPlayer, SlotId};
 
 pub struct ClientPacketHandler;
 
 impl ClientPacketHandler {
-    pub async fn handle_packet(packet_id: i32, buffer: &[u8], version: i32, player_id: SlotId, client_handle: &ConnectionHandle, sync_data: &Arc<PlayerSyncData>) -> IOResult<bool> {
+    pub async fn handle_packet(packet_id: i32, buffer: &[u8], version: i32, player: &WeakHandle<ProxiedPlayer>, client_handle: &ConnectionHandle) -> IOResult<bool> {
         if let Some(packet_type) = PacketRegistry::instance().get_client_packet_type(client_handle.protocol_state(), version, packet_id) { match packet_type {
             ClientPacketType::FinishConfiguration => {
                 client_handle.set_protocol_state(ProtocolState::Game);
             }
             ClientPacketType::ConfigurationAck => {
                 client_handle.set_protocol_state(ProtocolState::Config);
-                if sync_data.is_switching_server.load(Ordering::Relaxed) {
-                    sync_data.config_ack_notify.notify_one();
-                    return Ok(false);
+                if let Some(player) = player.upgrade() {
+                    if player.sync_data.is_switching_server.load(Ordering::Relaxed) {
+                        player.sync_data.config_ack_notify.notify_one();
+                        return Ok(false);
+                    }
                 }
             }
             ClientPacketType::ClientSettings => {
                 let packet = ClientSettings::decode(&mut Cursor::new(buffer), version)?;
-                *sync_data.client_settings.lock().await = Some(packet);
+                if let Some(player) = player.upgrade() {
+                    *player.sync_data.client_settings.lock().await = Some(packet);
+                }
             },
             ClientPacketType::ClientCustomPayload => {
                 let packet = ClientCustomPayload::decode(&mut Cursor::new(buffer), version)?;
                 if (version < R1_13 && packet.channel == "MC|Brand") || (version >= R1_13 && packet.channel == "minecraft:brand") {
-                    *sync_data.brand_packet.lock().await = Some(packet);
+                    if let Some(player) = player.upgrade() {
+                        *player.sync_data.brand_packet.lock().await = Some(packet);
+                    }
                 }
             }
             ClientPacketType::UnsignedClientCommand => {
@@ -40,8 +46,9 @@ impl ClientPacketHandler {
                 if ProxyServer::instance().command_registry().get_command_by_name(&command_name).is_none() {
                     return Ok(true);
                 }
+                let player_ = player.clone();
                 tokio::task::spawn_blocking(move || { // Needs to be blocking because commands are executed synchronously
-                    if ProxyServer::instance().command_registry().execute(&CommandSender::Player(player_id), &line) {
+                    if ProxyServer::instance().command_registry().execute(&CommandSender::Player(player_), &line) {
                         return true;
                     } else {
                         log::debug!("Command not found '{}' passing command to server", line);
@@ -55,8 +62,9 @@ impl ClientPacketHandler {
                 let cursor = packet.cursor;
                 if cursor.starts_with("/") {
                     let transaction_id = packet.transaction_id;
+                    let player_ = player.clone();
                     let response = tokio::task::spawn_blocking(move || { // Needs to be blocking because commands are executed synchronously
-                        ProxyServer::instance().command_registry().tab_complete(&CommandSender::Player(player_id), &cursor[1..])
+                        ProxyServer::instance().command_registry().tab_complete(&CommandSender::Player(player_), &cursor[1..])
                     }).await?;
                     if let Some(response) = response {
                         if let Some(response) = response {
@@ -77,10 +85,9 @@ impl ClientPacketHandler {
     }
 }
 
-pub fn switch_server_helper(player: SlotId, server_id: SlotId) -> Pin<Box<dyn Future<Output=()> + Send>> {
+pub fn switch_server_helper(player: WeakHandle<ProxiedPlayer>, server_id: SlotId) -> Pin<Box<dyn Future<Output=()> + Send>> {
     let block = async move {
-        let players = ProxyServer::instance().players().read().await;
-        if let Some(player) = players.get(player) {
+        if let Some(player) = player.upgrade() {
             if player.current_server == server_id {
                 player.send_message(Text::new("§cYou're already connected to this server")).await.ok();
                 return;
@@ -94,7 +101,7 @@ pub fn switch_server_helper(player: SlotId, server_id: SlotId) -> Pin<Box<dyn Fu
 pub struct ServerPacketHandler;
 
 impl ServerPacketHandler {
-    pub async fn handle_packet(packet_id: i32, buffer: &[u8], version: i32, _player_id: SlotId, server_handle: &ConnectionHandle, _: &Arc<PlayerSyncData>, client_handle: &ConnectionHandle) -> IOResult<bool> {
+    pub async fn handle_packet(packet_id: i32, buffer: &[u8], version: i32, _player: &WeakHandle<ProxiedPlayer>, server_handle: &ConnectionHandle, client_handle: &ConnectionHandle) -> IOResult<bool> {
         if let Some(packet_type) = PacketRegistry::instance().get_server_packet_type(server_handle.protocol_state(), version, packet_id) { match packet_type {
             ServerPacketType::BundleDelimiter => {
                 let _ = client_handle.on_bundle().await;

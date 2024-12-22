@@ -1,3 +1,5 @@
+#![feature(arbitrary_self_types)]
+
 use rustyline::{DefaultEditor, ExternalPrinter};
 use std::io;
 use std::io::Write;

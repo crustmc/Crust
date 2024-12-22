@@ -4,7 +4,6 @@ use std::{
     net::{IpAddr, SocketAddr},
     ops::DerefMut,
     pin::Pin,
-    sync::Arc,
 };
 
 use rand::RngCore;
@@ -19,22 +18,18 @@ use crate::{
         encryption::{PacketDecryption, PacketEncryption},
         packets::{EncryptionResponse, Kick, Packet},
     },
-    util::{IOError, IOErrorKind, VarInt},
+    util::{IOError, IOErrorKind, VarInt, WeakHandle},
     version::R1_20_2,
 };
 
 use self::packets::{LoginAcknowledged, LoginDisconnect, SetCompression};
 
 use super::{
-    packet_handler::ServerPacketHandler,
-    packet_ids::{PacketRegistry, ServerPacketType},
-    packets::{
+    packet_handler::ServerPacketHandler, packet_ids::{PacketRegistry, ServerPacketType}, packets::{
         self, encode_and_send_packet, read_and_decode_packet, CookieRequest, CookieResponse,
         EncryptionRequest, Handshake, LoginPluginRequest, LoginPluginResponse, LoginRequest,
         LoginSuccess, PlayerPublicKey, ProtocolState, PROTOCOL_STATE_LOGIN,
-    },
-    proxy_handler::{ClientHandle, ConnectionHandle, PacketSending},
-    PlayerSyncData, ProxyServer, SlotId,
+    }, proxy_handler::{ClientHandle, ConnectionHandle, PacketSending}, ProxiedPlayer, ProxyServer, SlotId
 };
 
 #[derive(Debug)]
@@ -74,7 +69,6 @@ impl EstablishedBackend {
         self,
         server_name: &str,
         partner: ClientHandle,
-        sync_data: Arc<PlayerSyncData>,
     ) -> (GameProfile, ConnectionHandle) {
         let player_name = self.profile.name.clone();
         let Self {
@@ -87,7 +81,8 @@ impl EstablishedBackend {
         } = self;
         let synced_protocol_state = partner.connection.protocol_state.clone();
         let (read, mut write) = stream.into_split();
-        let player_id = partner.player_id;
+        let player = partner.player.clone();
+        let version = partner.version;
 
         let partner_handle = partner.connection.clone();
         let (mut encryption, decryption) = match encryption {
@@ -96,6 +91,7 @@ impl EstablishedBackend {
         };
 
         let (handle_sender, handle_receiver) = tokio::sync::oneshot::channel::<ConnectionHandle>();
+        let player_ = player.clone();
         let read_task = tokio::spawn(async move {
             let self_handle = handle_receiver.await.unwrap();
             let mut protocol_buf = Vec::new();
@@ -126,10 +122,9 @@ impl EstablishedBackend {
                 let res = ServerPacketHandler::handle_packet(
                     packet_id,
                     &read_buf[VarInt::get_size(packet_id)..],
-                    sync_data.version,
-                    player_id,
+                    version,
+                    &player_,
                     &self_handle,
-                    &sync_data,
                     &partner.connection,
                 )
                     .await;
@@ -184,7 +179,6 @@ impl EstablishedBackend {
             write_task.abort_handle(),
             compression_threshold,
             decryption,
-            None,
             address,
         );
 
@@ -212,7 +206,7 @@ impl EstablishedBackend {
             for server_name in servers.get_priorities() {
                 let server = servers.get_server_id_by_name(&server_name);
                 if let Some(server) = server {
-                    if switch_server_helper(player_id, server).await {
+                    if switch_server_helper(player.clone(), server).await {
                         return;
                     }
                 }
@@ -237,15 +231,12 @@ impl EstablishedBackend {
 }
 
 fn switch_server_helper(
-    player_id: SlotId,
+    player: WeakHandle<ProxiedPlayer>,
     server: SlotId,
 ) -> Pin<Box<dyn Future<Output=bool> + Send>> {
     let block = async move {
-        let players = ProxyServer::instance().players().read().await;
-        let player = players.get(player_id);
-        if let Some(player) = player {
+        if let Some(player) = player.upgrade() {
             let switched = player.switch_server(server).await;
-            drop(players);
             if let Some(success) = switched {
                 let success = success.await;
                 if let Ok(success) = success {
