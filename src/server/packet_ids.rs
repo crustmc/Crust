@@ -362,7 +362,7 @@ impl PacketRegistry {
             }
         }
 
-        for version in SUPPORTED_VERSIONS.iter() {
+        for version in ALL_VERSIONS.iter() {
             for ((state, packet_type), list) in server_packet_ids.iter() {
                 for (version_range, packet_id) in list.iter().rev() {
                     if version_range.contains(version) {
