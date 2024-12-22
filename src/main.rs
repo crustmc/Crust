@@ -2,12 +2,13 @@ use rustyline::{DefaultEditor, ExternalPrinter};
 use std::io;
 use std::io::Write;
 use env_logger::{Builder, Target, WriteStyle};
-use log::{error, info};
+use log::error;
 use crate::server::command::CommandSender;
 use crate::server::ProxyServer;
 
 pub mod auth;
 pub mod chat;
+pub mod haproxy;
 pub mod server;
 pub mod util;
 pub mod version;
@@ -35,7 +36,6 @@ fn main() {
         #[cfg(not(debug_assertions))]
         std::env::set_var("RUST_LOG", "info");
     }
-
 
     let mut editor = DefaultEditor::new().unwrap();
     let external_printer = editor.create_external_printer().unwrap();

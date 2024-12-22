@@ -47,7 +47,7 @@ pub struct ProxyConfig {
     pub spigot_forward: bool,
     pub priorities: Vec<String>,
     pub max_packet_per_second: i32,
-
+    pub proxy_protocol: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -78,7 +78,8 @@ impl Default for ProxyConfig {
                 }
             ],
             priorities: vec!["lobby".to_owned()],
-            max_packet_per_second: 2000
+            max_packet_per_second: 2000,
+            proxy_protocol: false,
         }
     }
 }

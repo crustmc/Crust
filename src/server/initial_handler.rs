@@ -5,7 +5,7 @@ use rand::RngCore;
 use rsa::{pkcs8::EncodePublicKey, Pkcs1v15Encrypt};
 use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::TcpStream};
 
-use crate::{auth::GameProfile, chat::{Text, TextContent}, server::{packet_ids::{ClientPacketType, PacketRegistry}, packets::{read_and_decode_packet, EncryptionResponse, Packet, ProtocolState}}, util::{EncodingHelper, IOError, IOErrorKind, IOResult, VarInt}};
+use crate::{auth::GameProfile, chat::{Text, TextContent}, haproxy::{HAProxyAdresses, HAProxyCommand, HAProxyMessage, HAProxyMessageV1, HAProxyMessageV2, HAProxyProtocolFamily}, server::{packet_ids::{ClientPacketType, PacketRegistry}, packets::{read_and_decode_packet, EncryptionResponse, Packet, ProtocolState}}, util::{EncodingHelper, IOError, IOErrorKind, IOResult, VarInt}};
 
 use self::packets::SetCompression;
 
@@ -22,8 +22,47 @@ struct WriteBuffers<'a> {
     protocol_buf: &'a mut Vec<u8>,
 }
 
-pub async fn handle(mut stream: TcpStream, peer_addr: SocketAddr) {
+async fn read_ha_proxy(stream: &mut TcpStream) -> IOResult<HAProxyMessage> {
+    check_timeout!(HAProxyMessage::decode_async(stream)).await?
+}
+
+pub async fn handle(mut stream: TcpStream, mut peer_addr: SocketAddr) {
     tokio::spawn(async move {
+        if ProxyServer::instance().config().proxy_protocol {
+            match read_ha_proxy(&mut stream).await {
+                Ok(packet) => {
+                    let new_addr = match packet {
+                        HAProxyMessage::V1(HAProxyMessageV1 { protocol_family }) => match protocol_family {
+                            HAProxyProtocolFamily::TCP4 { src, .. } => Some(src.into()),
+                            HAProxyProtocolFamily::TCP6 { src, .. } => Some(src.into()),
+                            HAProxyProtocolFamily::Unknown => None,
+                        },
+                        HAProxyMessage::V2(HAProxyMessageV2 { addresses, command, .. }) => {
+                            if let HAProxyCommand::Local = command {
+                                None
+                            } else {
+                                match addresses {
+                                    HAProxyAdresses::Inet { src, .. } => Some(src.into()),
+                                    HAProxyAdresses::Inet6 { src, .. } => Some(src.into()),
+                                    _ => {
+                                        log::debug!("[{}] HAProxy protocol failed to decode: Unsupported address family", peer_addr);
+                                        return;
+                                    }
+                                }
+                            }
+                        }
+                    };
+                    if let Some(new_addr) = new_addr {
+                        log::debug!("Changed remote address {} to {}", peer_addr, new_addr);
+                        peer_addr = new_addr;
+                    }
+                },
+                Err(e) => {
+                    log::debug!("[{}] HAProxy protocol failed to decode: {}", peer_addr, e);
+                    return;
+                },
+            }
+        }
         let proxying_data = {
             let mut buffer = Vec::new();
             let handshake = match handshaking(&mut stream, &mut buffer).await {
