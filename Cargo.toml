@@ -45,6 +45,7 @@ paste = "1.0.15"
 const_format = "0.2.34"
 openssl = { version = "0.10", features = ["vendored"] }
 reqwest = { version = "0.12.9"  }
+rustyline = "15.0.0"
 
 [target.'cfg(not(target_os = "windows"))'.dependencies]
 flate2 = { version = "1.0.35", features = ["zlib-ng"], default-features = false }

@@ -23,7 +23,6 @@ pub enum NbtType {
 }
 
 impl NbtType {
-    #[inline]
     pub fn from_json(json: &Value) -> IOResult<Self> {
         Ok(match json {
             Value::Number(value) => {
@@ -130,8 +129,7 @@ impl NbtType {
             }
         })
     }
-
-    #[inline]
+    
     pub fn to_json(&self) -> Value {
         match self {
             // Self::EndTag => Value::Null,
@@ -216,8 +214,7 @@ impl NbtType {
             }
         }
     }
-
-    #[inline]
+    
     pub fn id(&self) -> i8 {
         match self {
             // Self::EndTag => 0,
@@ -235,8 +232,7 @@ impl NbtType {
             Self::LongArrayTag(_) => 12,
         }
     }
-
-    #[inline]
+    
     fn read<R: ReadBytesExt + ?Sized>(input: &mut R, counter: &mut NbtCounter, id: i8) -> IOResult<Self>
     where
         Self: Sized,
@@ -360,8 +356,7 @@ impl NbtType {
             }
         })
     }
-
-    #[inline]
+    
     fn write<W: WriteBytesExt + ?Sized>(&self, out: &mut W) -> IOResult<()> {
         match self {
             // Self::EndTag => {}
@@ -425,7 +420,6 @@ impl NbtType {
     }
 }
 
-#[inline]
 pub fn read_networking_nbt<R: ReadBytesExt + ?Sized>(input: &mut R, version: i32) -> IOResult<Either<Option<NbtType>, NamedTag>> {
     let mut counter = NbtCounter {
         depth: 0,
@@ -450,7 +444,6 @@ pub fn read_networking_nbt<R: ReadBytesExt + ?Sized>(input: &mut R, version: i32
     }
 }
 
-#[inline]
 pub fn write_networking_nbt<W: WriteBytesExt + ?Sized>(out: &mut W, _: i32, either: &Either<Option<NbtType>, NamedTag>) -> IOResult<()> {
     if let Some(option) = either.as_ref().left() {
         if let Some(nbt) = option {
@@ -473,7 +466,6 @@ pub struct NamedTag {
     tag: NbtType,
 }
 
-#[inline]
 pub fn read_java_utf<R: ReadBytesExt + ?Sized>(input: &mut R) -> IOResult<String> {
     let utflen = input.read_u16::<BE>()?;
     let mut bytearr = vec![0; utflen as usize];
@@ -481,7 +473,6 @@ pub fn read_java_utf<R: ReadBytesExt + ?Sized>(input: &mut R) -> IOResult<String
     Ok(cesu8::from_java_cesu8(&bytearr).map_err(|err| IOError::new(ErrorKind::InvalidData, err))?.to_string())
 }
 
-#[inline]
 pub fn write_java_utf<W: WriteBytesExt + ?Sized>(out: &mut W, string: &str) -> IOResult<()> {
     let encoded = to_java_cesu8(string);
     out.write_u16::<BE>(encoded.len() as u16)?;
@@ -496,7 +487,7 @@ pub struct NbtCounter {
 }
 
 impl NbtCounter {
-    #[inline]
+
     pub fn account_bytes(&mut self, bytes: u64) -> IOResult<()> {
         if self.used_bytes + bytes > self.max_bytes {
             return Err(IOError::new(ErrorKind::InvalidData, "exeeded byte limit"));
@@ -504,8 +495,7 @@ impl NbtCounter {
         self.used_bytes += bytes;
         Ok(())
     }
-
-    #[inline]
+    
     pub fn push(&mut self) -> IOResult<()> {
         self.depth += 1;
         if self.depth > 512 {
@@ -513,8 +503,7 @@ impl NbtCounter {
         }
         Ok(())
     }
-
-    #[inline]
+    
     pub fn pop(&mut self) -> IOResult<()> {
         if self.depth == 0 {
             return Err(IOError::new(ErrorKind::InvalidData, "popped more than pushed"));

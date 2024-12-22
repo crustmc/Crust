@@ -81,7 +81,6 @@ pub const SUPPORTED_VERSIONS: &[i32] = &[
 
 pub const SUPPORTED_VERSION_RANGE: &str = formatcp!("{}-{}", ALL_VERSION_NAMES[0], ALL_VERSION_NAMES[ALL_VERSION_NAMES.len() - 1]);
 
-#[inline]
 pub fn is_supported(version: i32) -> bool {
     SUPPORTED_VERSIONS.contains(&version)
 }

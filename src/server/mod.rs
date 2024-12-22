@@ -162,48 +162,39 @@ pub struct ProxyServer {
 static mut INSTANCE: Option<ProxyServer> = None;
 
 impl ProxyServer {
-
-    #[inline]
+    
     pub fn config(&self) -> &ProxyConfig {
         &self.config
     }
-
-    #[inline]
+    
     pub fn command_registry(&self) -> &CommandRegistry {
         &self.command_registry
     }
-
-    #[inline]
+    
     pub fn servers(&self) -> &RwLock<ServerList> {
         &self.servers
     }
-
-    #[inline]
+    
     pub fn players(&self) -> &RwLock<SlotMap<SlotId, ProxiedPlayer>> {
         &self.players
     }
-
-    #[inline]
+    
     pub fn rsa_private_key(&self) -> &RsaPrivateKey {
         &self.rsa_priv_key
     }
-
-    #[inline]
+    
     pub fn rsa_public_key(&self) -> &RsaPublicKey {
         &self.rsa_pub_key
     }
-
-    #[inline]
+    
     pub fn runtime(&self) -> &Runtime {
         &self.runtime
     }
-
-    #[inline]
+    
     pub fn block_on<F: Future<Output = T>, T>(&self, future: F) -> T {
         self.runtime.block_on(future)
     }
-
-    #[inline]
+    
     pub fn spawn_task<F: Future<Output = T> + Send + 'static, T: Send + 'static>(&self, future: F) -> JoinHandle<T> {
         self.runtime.spawn(future)
     }
@@ -326,7 +317,7 @@ pub fn run_server() {
         });
     }
 
-    ProxyServer::instance().block_on(async move {
+    ProxyServer::instance().spawn_task(async move {
         let listener = TcpListener::bind(&ProxyServer::instance().config.bind_address).await.unwrap();
         log::info!("Listening on {}", listener.local_addr().unwrap());
         let mut map = HashMap::new();

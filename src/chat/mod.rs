@@ -180,7 +180,7 @@ pub struct Style {
 }
 
 impl Style {
-    #[inline]
+
     pub fn empty() -> Self {
         Self::default()
     }

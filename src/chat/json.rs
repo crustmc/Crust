@@ -7,7 +7,6 @@ use uuid::Uuid;
 
 use super::*;
 
-#[inline]
 fn serialize_style0(style: &Style, map: &mut Map<String, Value>) {
     if let Some(color) = style.color {
         map.insert("color".to_string(), Value::String(match color {
@@ -50,7 +49,6 @@ fn serialize_style0(style: &Style, map: &mut Map<String, Value>) {
     }
 }
 
-#[inline]
 fn serialize_content_into(text: &Text, map: &mut Map<String, Value>) {
     match &text.content {
         TextContent::Literal(text) => {
@@ -104,14 +102,12 @@ fn serialize_content_into(text: &Text, map: &mut Map<String, Value>) {
     }
 }
 
-#[inline]
 pub fn serialize_style(style: &Style) -> Value {
     let mut map = Map::new();
     serialize_style0(style, &mut map);
     Value::Object(map)
 }
 
-#[inline]
 pub fn serialize_json(text: &Text) -> Value {
     if let TextContent::Literal(str) = &text.content {
         if text.style.is_empty() && text.insertion.is_none()
@@ -243,7 +239,6 @@ impl std::error::Error for DeserializationError {}
 
 type Result<T> = std::result::Result<T, DeserializationError>;
 
-#[inline]
 fn deserialize_style0(map: &Map<String, Value>) -> Result<Style> {
     let mut style = Style::empty();
     if let Some(color) = map.get("color").map(|v| v.as_str()).flatten() {
@@ -284,7 +279,6 @@ fn deserialize_style0(map: &Map<String, Value>) -> Result<Style> {
     Ok(style)
 }
 
-#[inline]
 fn deserialize_content(map: &Map<String, Value>) -> Result<TextContent> {
     let text = map.get("text");
     if let Some(text) = text {
@@ -347,7 +341,6 @@ fn deserialize_content(map: &Map<String, Value>) -> Result<TextContent> {
     Err(DeserializationError::CouldNotIdentifyContentType)
 }
 
-#[inline]
 pub fn deserialize_style(value: &Value) -> Result<Style> {
     match value {
         Value::Object(map) => deserialize_style0(map),
@@ -355,7 +348,6 @@ pub fn deserialize_style(value: &Value) -> Result<Style> {
     }
 }
 
-#[inline]
 pub fn deserialize_json(value: &Value) -> Result<Text> {
     match value {
         Value::Array(array) => {

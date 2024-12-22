@@ -17,7 +17,6 @@ pub type IOError = std::io::Error;
 pub type IOErrorKind = std::io::ErrorKind;
 pub type IOResult<T> = std::result::Result<T, IOError>;
 
-#[inline]
 pub fn generate_uuid(username: &str) -> Uuid {
     uuid::Builder::from_md5_bytes(
         md5::compute(format!("OfflinePlayer:{username}").as_bytes()).into(),
@@ -25,7 +24,6 @@ pub fn generate_uuid(username: &str) -> Uuid {
     .into_uuid()
 }
 
-#[inline]
 pub fn is_username_valid(username: &str) -> bool {
     !username.is_empty()
         && username.len() <= 16
@@ -37,7 +35,7 @@ pub fn is_username_valid(username: &str) -> bool {
 pub struct VarInt(pub i32);
 
 impl VarInt {
-    #[inline]
+    
     pub fn get(&self) -> i32 {
         self.0
     }
@@ -61,18 +59,15 @@ impl VarInt {
         }
         Ok(Self(out as i32))
     }
-
-    #[inline]
+    
     pub fn decode_simple<R: Read + ?Sized>(src: &mut R) -> IOResult<Self> {
         Self::decode(src, 5)
     }
-
-    #[inline]
+    
     pub fn encode_simple<W: Write + ?Sized>(&self, dest: &mut W) -> IOResult<usize> {
         self.encode(dest, 5)
     }
-
-    #[inline]
+    
     pub fn encode<W: Write + ?Sized>(&self, dest: &mut W, max_bytes: u32) -> IOResult<usize> {
         let max_bytes = max_bytes as usize;
         let mut value = self.0 as u32;
@@ -98,8 +93,7 @@ impl VarInt {
         }
         Ok(bytes)
     }
-
-    #[inline]
+    
     pub async fn decode_async<R: AsyncRead + Unpin + ?Sized>(
         src: &mut R,
         max_bytes: u32,
@@ -122,8 +116,7 @@ impl VarInt {
         }
         Ok(Self(out as i32))
     }
-
-    #[inline]
+    
     pub async fn decode_encrypted_async<R: AsyncRead + Unpin + ?Sized>(
         src: &mut R,
         max_bytes: u32,
@@ -150,8 +143,7 @@ impl VarInt {
         }
         Ok(Self(out as i32))
     }
-
-    #[inline]
+    
     pub async fn encode_async<W: AsyncWrite + Unpin + ?Sized>(
         &self,
         dest: &mut W,
@@ -180,8 +172,7 @@ impl VarInt {
         }
         Ok(bytes as usize)
     }
-
-    #[inline]
+    
     pub fn get_size(v: i32) -> usize {
         let v = v as u32;
         if (v & 0xFFFFFF80) == 0 {
@@ -202,15 +193,14 @@ impl VarInt {
 
 impl Deref for VarInt {
     type Target = i32;
-
-    #[inline]
+    
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
 impl DerefMut for VarInt {
-    #[inline]
+    
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
@@ -220,7 +210,7 @@ impl<T> From<T> for VarInt
 where
     T: Into<i32>,
 {
-    #[inline]
+
     fn from(value: T) -> Self {
         VarInt(value.into())
     }
@@ -230,15 +220,15 @@ pub struct EncodingHelper(());
 
 impl EncodingHelper {
     
-    #[inline]
+
     pub fn write_byte_array<W: Write + ?Sized>(dest: &mut W, data: &[u8]) -> IOResult<()> {
         let len = VarInt(data.len() as i32);
         len.encode(dest, 5)?;
         dest.write_all(data)?;
         Ok(())
     }
-    
-    #[inline]
+
+
     pub fn read_byte_array<R: Read + ?Sized>(src: &mut R, max_length: usize) -> IOResult<Vec<u8>> {
         let len = VarInt::decode(src, 5)?.get() as usize;
         if len > max_length {
@@ -248,8 +238,8 @@ impl EncodingHelper {
         src.read_exact(&mut data)?;
         Ok(data)
     }
-    
-    #[inline]
+
+
     pub fn write_string<W: Write + ?Sized>(dest: &mut W, data: &str) -> IOResult<()> {
         let data = data.as_bytes();
         VarInt(data.len() as i32).encode_simple(dest)?;
@@ -257,7 +247,7 @@ impl EncodingHelper {
         Ok(())
     }
     
-    #[inline]
+
     pub fn read_string<R: Read + ?Sized>(src: &mut R, max_length: usize) -> IOResult<String> {
         let len = VarInt::decode(src, 5)?.get() as usize;
         if len > max_length * 3 {
@@ -287,13 +277,13 @@ impl EncodingHelper {
         Ok(())
     }
     
-    #[inline]
+
     pub fn write_uuid<W: Write + ?Sized>(dest: &mut W, uuid: &Uuid) -> IOResult<()> {
         dest.write_all(uuid.as_bytes())?;
         Ok(())
     }
     
-    #[inline]
+
     pub fn read_uuid<R: Read + ?Sized>(src: &mut R) -> IOResult<Uuid> {
         let mut data = [0; 16];
         src.read_exact(&mut data)?;

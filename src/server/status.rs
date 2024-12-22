@@ -29,7 +29,6 @@ pub struct StatusResponse {
 
 impl Display for StatusResponse {
     
-    #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", serde_json::to_string(self).unwrap())
     }

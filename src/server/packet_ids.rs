@@ -61,30 +61,26 @@ lazy_static! {
 
 #[allow(dead_code)]
 impl PacketRegistry {
-    #[inline]
+    
     pub fn instance() -> &'static Self {
         &PACKET_REGISTRY
     }
-
-    #[inline]
+    
     pub fn get_server_packet_id(&self, state: ProtocolState, version: i32, packet_type: ServerPacketType) -> Option<i32> {
         self.server_packet_ids.get(&(state, packet_type, version)).copied().map(|id| id as i32)
     }
-
-    #[inline]
+    
     pub fn get_server_packet_type(&self, state: ProtocolState, version: i32, packet_id: i32) -> Option<ServerPacketType> {
         if !(0..256).contains(&packet_id) {
             return None;
         }
         self.server_packet_types.get(&(state, packet_id as u8, version)).copied()
     }
-
-    #[inline]
+    
     pub fn get_client_packet_id(&self, state: ProtocolState, version: i32, packet_type: ClientPacketType) -> Option<i32> {
         self.client_packet_ids.get(&(state, packet_type, version)).copied().map(|id| id as i32)
     }
-
-    #[inline]
+    
     pub fn get_client_packet_type(&self, state: ProtocolState, version: i32, packet_id: i32) -> Option<ClientPacketType> {
         if !(0..256).contains(&packet_id) {
             return None;

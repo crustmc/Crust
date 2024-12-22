@@ -30,7 +30,6 @@ pub struct ClientHandle {
     pub connection: ConnectionHandle,
 }
 
-#[inline]
 pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
     let display_name = format!("[{}|{}]", data.profile.name, data.address);
     log::debug!("{} Connecting to priority servers...", display_name);
@@ -195,7 +194,6 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
     con_handle.spawn_read_task(true, display_name, backend_handle, player_id, data.version).await;
 }
 
-#[inline]
 async fn read_task(packet_limit: bool, _display_name: String, partner: ConnectionHandle, self_handle: ConnectionHandle, player_id: SlotId, version: i32, sync_data: Option<Arc<PlayerSyncData>>) {
     let mut read_buf = Vec::new();
     let mut protocol_buf = Vec::new();
@@ -282,7 +280,6 @@ impl Display for ConnectionHandle {
 }
 
 impl ConnectionHandle {
-    #[inline]
     pub(crate) fn new(name: String, sender: Sender<PacketSending>, reader: OwnedReadHalf, protocol_state: ProtocolState, write_task: AbortHandle,
                       compression_threshold: i32, decryption: Option<PacketDecryption>, sync_data: Option<Arc<PlayerSyncData>>, address: SocketAddr) -> Self {
         Self {
@@ -300,18 +297,15 @@ impl ConnectionHandle {
             closed: Arc::new(AtomicBool::new(false)),
         }
     }
-
-    #[inline]
+    
     pub fn protocol_state(&self) -> ProtocolState {
         unsafe { core::mem::transmute(self.protocol_state.load(Ordering::Relaxed)) }
     }
-
-    #[inline]
+    
     pub fn set_protocol_state(&self, state: ProtocolState) {
         self.protocol_state.store(state as u8, Ordering::Relaxed);
     }
-
-    #[inline]
+    
     pub(crate) async fn spawn_read_task(&self, packet_limiter: bool, display_name: String, partner: ConnectionHandle, player_id: SlotId, version: i32) {
         let mut old_read_task = self.read_task.lock().await;
         if old_read_task.is_some() {
@@ -320,35 +314,29 @@ impl ConnectionHandle {
         let read_task = tokio::spawn(read_task(packet_limiter, display_name, partner, self.clone(), player_id, version, self.sync_data.clone()));
         old_read_task.replace(read_task.abort_handle());
     }
-
-    #[inline]
+    
     pub async fn sync(&self) -> IOResult<()> {
         let (sender, receiver) = tokio::sync::oneshot::channel();
         self.sender.send(PacketSending::Sync(sender)).await.map_err(|_| IOError::new(std::io::ErrorKind::Other, "Failed to queue sync packet!"))?;
         receiver.await.map_err(|_| IOError::new(std::io::ErrorKind::Other, "Failed to receive sync packet!"))
     }
-
-    #[inline]
+    
     pub async fn queue_packet(&self, packet: Vec<u8>, bypass_drop: bool) -> IOResult<()> {
         self.sender.send(PacketSending::Packet(packet, bypass_drop)).await.map_err(|_| IOError::new(std::io::ErrorKind::Other, "Failed to queue packet!"))
     }
-
-    #[inline]
+    
     pub async fn drop_redundant(&self, drop: bool) -> IOResult<()> {
         self.sender.send(PacketSending::DropRedundant(drop)).await.map_err(|_| IOError::new(std::io::ErrorKind::Other, "Failed to queue drop redundant packet!"))
     }
-
-    #[inline]
+    
     pub async fn on_bundle(&self) -> IOResult<()> {
         self.sender.send(PacketSending::BundleReceived).await.map_err(|_| IOError::new(std::io::ErrorKind::Other, "Failed to queue bundle received packet!"))
     }
-
-    #[inline]
+    
     pub async fn goto_config(&self, version: i32) -> IOResult<()> {
         self.sender.send(PacketSending::StartConfig(version)).await.map_err(|_| IOError::new(std::io::ErrorKind::Other, "Failed to queue start config packet!"))
     }
-
-    #[inline]
+    
     pub async fn disconnect(&self, reason: &str) {
         if self.closed.load(Ordering::Relaxed) {
             log::debug!("{} disconnected twice: {}", self.name, reason);
@@ -361,8 +349,7 @@ impl ConnectionHandle {
             task.abort();
         }
     }
-
-    #[inline]
+    
     pub async fn wait_for_disconnect(&self) {
         let _ = self.disconnect_wait.read().await;
     }
