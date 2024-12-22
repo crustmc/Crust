@@ -320,6 +320,20 @@ impl<T> Handle<T> {
     }
 }
 
+impl<T> Into<Arc<T>> for Handle<T> {
+
+    fn into(self) -> Arc<T> {
+        self.inner
+    }
+}
+
+impl<T> From<Arc<T>> for Handle<T> {
+
+    fn from(inner: Arc<T>) -> Self {
+        Self { inner }
+    }
+}
+
 impl<T> Clone for Handle<T> {
 
     fn clone(&self) -> Self {
