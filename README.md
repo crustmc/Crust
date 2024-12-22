@@ -50,10 +50,10 @@ You should firewall the ports of you backend servers or bind you backend servers
 - [x] de-/serializing Chat components
 - [x] versioning in binary file
 - [x] inject into Commands packet to make our commands tabable
-- [ ] HA-Proxy support
+- [x] HA-Proxy support
 - [ ] add a plugin system with API and events
 - [ ] simple permission system
-- [ ] good terminal UI
+- [x] good terminal UI
 - [x] command system
 - [ ] limbo
 - [ ] support BungeeCord plugin messaging
