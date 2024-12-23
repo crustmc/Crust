@@ -385,17 +385,17 @@ impl ProxiedPlayer {
         Ok(())
     }
 
-    pub async fn switch_server(mut self: Handle<Self>, server_id: SlotId) -> Option<JoinHandle<bool>> {
-        if self.client_handle.closed.load(Ordering::Relaxed) {
+    pub async fn switch_server(mut player: Handle<ProxiedPlayer>, server_id: SlotId) -> Option<JoinHandle<bool>> {
+        if player.client_handle.closed.load(Ordering::Relaxed) {
             return None;
         }
 
-        if let Err(true) = self.sync_data.is_switching_server.compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed) {
+        if let Err(true) = player.sync_data.is_switching_server.compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed) {
             return None;
         }
-        let version = self.protocol_version;
+        let version = player.protocol_version;
         let join_handle = tokio::spawn(async move {
-            if self.client_handle.closed.load(Ordering::Relaxed) {
+            if player.client_handle.closed.load(Ordering::Relaxed) {
                 return false;
             }
             
@@ -403,60 +403,60 @@ impl ProxiedPlayer {
                 let server_list = ProxyServer::instance().servers().read().await;
                 let server = server_list.get_server(server_id);
                 if server.is_none() {
-                    self.sync_data.is_switching_server.store(false, Ordering::Relaxed);
+                    player.sync_data.is_switching_server.store(false, Ordering::Relaxed);
                     return false;
                 }
                 let server = server.unwrap();
                 (server.address.clone(), server.label.clone())
             };
 
-            let username = self.profile.name.clone();
+            let username = player.profile.name.clone();
             let backend = backend::connect(
-                self.client_handle.address, addr, "127.0.0.1".to_string(), 25565,
-                self.profile.clone(), self.player_public_key.clone(), version
+                player.client_handle.address, addr, "127.0.0.1".to_string(), 25565,
+                player.profile.clone(), player.player_public_key.clone(), version
             ).await;
             if let Err(e) = backend {
                 log::error!("[{}] Failed to connect to backend: {}", username, e);
-                self.sync_data.is_switching_server.store(false, Ordering::Relaxed);
-                let _ = self.send_message(Text::new(format!("§cCould not connect: {}", e))).await;
+                player.sync_data.is_switching_server.store(false, Ordering::Relaxed);
+                let _ = player.send_message(Text::new(format!("§cCould not connect: {}", e))).await;
                 return false;
             }
             let backend = backend.unwrap();
 
-            if let ProtocolState::Game = self.client_handle.protocol_state() {
-                let _ = self.client_handle.drop_redundant(true).await;
-                if let Some(ref server_handle) = self.server_handle {
+            if let ProtocolState::Game = player.client_handle.protocol_state() {
+                let _ = player.client_handle.drop_redundant(true).await;
+                if let Some(ref server_handle) = player.server_handle {
                     server_handle.disconnect("client is switching servers").await;
                     server_handle.wait_for_disconnect().await;
                 }
 
-                let _ = self.client_handle.goto_config(version).await;
-                self.sync_data.config_ack_notify.notified().await;
+                let _ = player.client_handle.goto_config(version).await;
+                player.sync_data.config_ack_notify.notified().await;
 
-                let _ = self.client_handle.drop_redundant(false).await;
+                let _ = player.client_handle.drop_redundant(false).await;
             } else {
                 log::warn!("Player {} is not in game state, cancelling server switch.", username);
-                self.sync_data.is_switching_server.store(false, Ordering::Relaxed);
+                player.sync_data.is_switching_server.store(false, Ordering::Relaxed);
                 return false;
             }
 
-            if let Some(read_task) = self.client_handle.read_task.lock().await.take() {
+            if let Some(read_task) = player.client_handle.read_task.lock().await.take() {
                 read_task.abort();
             }
 
             let (profile, server_handle) = backend.begin_proxying(&server_name, ClientHandle {
-                player: self.downgrade(),
+                player: player.downgrade(),
                 version,
-                connection: self.client_handle.clone(),
+                connection: player.client_handle.clone(),
             }).await;
 
-            let settings = self.sync_data.client_settings.lock().await;
+            let settings = player.sync_data.client_settings.lock().await;
 
             if let Some(packet) = settings.as_ref() {
-                if let Some(data) = packets::get_full_client_packet_buf(packet, version, self.client_handle.protocol_state()).unwrap() {
+                if let Some(data) = packets::get_full_client_packet_buf(packet, version, player.client_handle.protocol_state()).unwrap() {
                     if let Err(_e) = server_handle.queue_packet(data, true).await {
                         drop(settings);
-                        self.sync_data.is_switching_server.store(false, Ordering::Relaxed);
+                        player.sync_data.is_switching_server.store(false, Ordering::Relaxed);
                         return false;
                     }
                 }
@@ -465,12 +465,12 @@ impl ProxiedPlayer {
 
             let display_name = format!("[{} - {}]", username, server_name);
 
-            self.client_handle.spawn_read_task(false, display_name, server_handle.clone(), self.downgrade(), version).await;
+            player.client_handle.spawn_read_task(false, display_name, server_handle.clone(), player.downgrade(), version).await;
 
-            self.current_server = server_id;
-            self.server_handle = Some(server_handle);
-            self.profile = profile;
-            self.sync_data.is_switching_server.store(false, Ordering::Relaxed);
+            player.current_server = server_id;
+            player.server_handle = Some(server_handle);
+            player.profile = profile;
+            player.sync_data.is_switching_server.store(false, Ordering::Relaxed);
             true
         });
         Some(join_handle)

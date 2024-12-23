@@ -236,7 +236,7 @@ fn switch_server_helper(
 ) -> Pin<Box<dyn Future<Output=bool> + Send>> {
     let block = async move {
         if let Some(player) = player.upgrade() {
-            let switched = player.switch_server(server).await;
+            let switched = ProxiedPlayer::switch_server(player, server).await;
             if let Some(success) = switched {
                 let success = success.await;
                 if let Ok(success) = success {

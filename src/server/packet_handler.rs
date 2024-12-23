@@ -92,7 +92,7 @@ pub fn switch_server_helper(player: WeakHandle<ProxiedPlayer>, server_id: SlotId
                 player.send_message(Text::new("§cYou're already connected to this server")).await.ok();
                 return;
             }
-            player.switch_server(server_id).await;
+            ProxiedPlayer::switch_server(player, server_id).await;
         }
     };
     Box::pin(block)
@@ -162,6 +162,10 @@ impl ServerPacketHandler {
                     if let Some(packet_buf) = packets::get_full_server_packet_buf(&packet, version, server_handle.protocol_state())? {
                         let _ = client_handle.queue_packet(packet_buf, false).await;
                     }
+                    return Ok(false);
+                }
+                
+                if packet.channel == "BungeeCord" {
                     return Ok(false);
                 }
                 

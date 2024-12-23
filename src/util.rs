@@ -313,13 +313,15 @@ impl<T> Handle<T> {
     pub fn downgrade(&self) -> WeakHandle<T> {
         WeakHandle::new(Arc::downgrade(&self.inner))
     }
-
-    pub fn get_mut<'a>(&'a self) -> &'a mut T {
+    
+    #[allow(clippy::mut_from_ref)]
+    pub fn get_mut(&self) -> &mut T {
         #[allow(invalid_reference_casting)]
-        unsafe { &mut *core::mem::transmute::<_, *mut T>(self.inner.deref() as *const T) }
+        unsafe { &mut *core::mem::transmute::<*const T, *mut T>(self.inner.deref() as *const T) }
     }
 }
 
+#[allow(clippy::from_over_into)]
 impl<T> Into<Arc<T>> for Handle<T> {
 
     fn into(self) -> Arc<T> {
