@@ -4,7 +4,8 @@ use rustyline::{DefaultEditor, ExternalPrinter};
 use std::io;
 use std::io::Write;
 use env_logger::{Builder, Target, WriteStyle};
-use log::error;
+use log::{error, info};
+use crate::plugin::api::API;
 use crate::server::command::CommandSender;
 use crate::server::ProxyServer;
 
@@ -65,8 +66,8 @@ fn main() {
                 }
             }
             Err(err) => {
-                println!("Error reading console line: {:?}", err);
-                break
+                info!("Error reading console line: {:?}", err);
+                API.shutdown_proxy(None);
             }
         }
     }

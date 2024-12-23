@@ -15,7 +15,7 @@ pub enum CommandArgType {
     #[default]
     TextSplitBySpace,
     /// Passes the full command string in ``args[0]`` and the full args string without the command name in ``args[1]``
-    /// And the you also have to calculate the start and length in the ``Suggestions`` struct when tab completing
+    /// And you also have to calculate the start and length in the ``Suggestions`` struct when tab completing
     Args0ContainsEverything,
 }
 

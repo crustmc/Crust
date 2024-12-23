@@ -1,23 +1,55 @@
-use crate::{chat::*, server::{brigadier::{Suggestion, Suggestions}, ProxyServer}};
-use crate::server::ProxiedPlayer;
-use crate::util::Handle;
 use super::{CommandRegistryBuilder, CommandSender};
+use crate::{
+    chat::*,
+    server::{
+        brigadier::{Suggestion, Suggestions},
+        ProxyServer,
+    },
+};
+use crate::plugin::api::API;
 
 pub fn register_all(builder: CommandRegistryBuilder) -> CommandRegistryBuilder {
     builder
         .core_command(
-            ["server"], Default::default(), server_command, Some(server_command_completer),
-            "crust.command.server", "Switches the player to another server"
+            ["server"],
+            Default::default(),
+            server_command,
+            Some(server_command_completer),
+            "crust.command.server",
+            "Switches the player to another server",
         )
         .core_command(
-            ["gkick"], Default::default(), gkick_command, Some(gkick_command_completer),
-            "crust.command.gkick", "Kick a player from the proxy"
+            ["gkick"],
+            Default::default(),
+            gkick_command,
+            Some(gkick_command_completer),
+            "crust.command.gkick",
+            "Kick a player from the proxy",
         )
+        .core_command(
+            ["end"],
+            crate::server::command::CommandArgType::Args0ContainsEverything,
+            end_command,
+            None,
+            "crust.command.end",
+            "Shutdown the proxy",
+        )
+}
+
+fn end_command(sender: &CommandSender, _name: &str, args: Vec<&str>) {
+    if args.get(1).unwrap().is_empty() {
+        API.shutdown_proxy(None);
+    } else {
+        API.shutdown_proxy(Some(&*args.get(1).unwrap().replace("&", "§")));
+    }
 }
 
 fn gkick_command(sender: &CommandSender, _name: &str, mut args: Vec<&str>) {
     if args.is_empty() {
-        sender.send_message(TextBuilder::new("Usage: /gkick <player> [reason]").style(Style::empty().with_color(TextColor::Red)));
+        sender.send_message(
+            TextBuilder::new("Usage: /gkick <player> [reason]")
+                .style(Style::empty().with_color(TextColor::Red)),
+        );
         return;
     }
     let player = ProxyServer::instance().get_player_by_name_blocking(args.first().unwrap());
@@ -28,23 +60,37 @@ fn gkick_command(sender: &CommandSender, _name: &str, mut args: Vec<&str>) {
                 if args.len() > 1 {
                     args.remove(0);
                     let str = args.join(" ");
-                    ProxyServer::instance().block_on( async move {
+                    ProxyServer::instance().block_on(async move {
                         player.kick(Text::new(str)).await.ok();
                     });
                 } else {
                     ProxyServer::instance().block_on(async move {
-                        player.kick(TextBuilder::new("You have been kicked off the proxy").style(Style::empty().with_color(TextColor::Red)).build()).await.ok();
+                        player
+                            .kick(
+                                TextBuilder::new("You have been kicked off the proxy")
+                                    .style(Style::empty().with_color(TextColor::Red))
+                                    .build(),
+                            )
+                            .await
+                            .ok();
                     });
                 }
                 return;
             }
         }
     }
-    sender.send_message(TextBuilder::new(format!("Player {} not found", args.first().unwrap())))
+    sender.send_message(TextBuilder::new(format!(
+        "Player {} not found",
+        args.first().unwrap()
+    )))
 }
 
-
-fn gkick_command_completer(_sender: &CommandSender, _name: &str, args: Vec<&str>, suggestions: &mut Suggestions) {
+fn gkick_command_completer(
+    _sender: &CommandSender,
+    _name: &str,
+    args: Vec<&str>,
+    suggestions: &mut Suggestions,
+) {
     if args.len() != 1 {
         return;
     }
@@ -59,13 +105,14 @@ fn gkick_command_completer(_sender: &CommandSender, _name: &str, args: Vec<&str>
             tooltip: None,
         });
     }
-   
 }
-
 
 fn server_command(sender: &CommandSender, _name: &str, args: Vec<&str>) {
     if !sender.is_player() {
-        sender.send_message(TextBuilder::new("This command can only be executed by a player").style(Style::empty().with_color(TextColor::Red)));
+        sender.send_message(
+            TextBuilder::new("This command can only be executed by a player")
+                .style(Style::empty().with_color(TextColor::Red)),
+        );
         return;
     }
     let player = sender.as_player().unwrap();
@@ -85,7 +132,9 @@ fn server_command(sender: &CommandSender, _name: &str, args: Vec<&str>) {
                 action: ClickAction::RunCommand,
                 value: format!("/server {}", info.label),
             });
-            text.hover_event = Some(HoverEvent::ShowText(Box::new(Text::new("click to connect"))));
+            text.hover_event = Some(HoverEvent::ShowText(Box::new(Text::new(
+                "click to connect",
+            ))));
             builder.add_extra(text);
         }
         drop(servers);
@@ -96,16 +145,25 @@ fn server_command(sender: &CommandSender, _name: &str, args: Vec<&str>) {
         let server = servers.get_server_id_by_name(&server_name);
         if let Some(server_id) = server {
             drop(servers);
-            ProxyServer::instance().block_on(crate::server::packet_handler::switch_server_helper(player, server_id));
+            ProxyServer::instance().block_on(crate::server::packet_handler::switch_server_helper(
+                player, server_id,
+            ));
         } else {
             drop(servers);
-            sender.send_message(TextBuilder::new(format!("The server {} does not exist", server_name))
-                .style(Style::default().with_color(TextColor::Red)));
+            sender.send_message(
+                TextBuilder::new(format!("The server {} does not exist", server_name))
+                    .style(Style::default().with_color(TextColor::Red)),
+            );
         }
     }
 }
 
-fn server_command_completer(_sender: &CommandSender, _name: &str, args: Vec<&str>, suggestions: &mut Suggestions) {
+fn server_command_completer(
+    _sender: &CommandSender,
+    _name: &str,
+    args: Vec<&str>,
+    suggestions: &mut Suggestions,
+) {
     if args.len() != 1 {
         return;
     }
