@@ -11,6 +11,7 @@ use crate::server::ProxyServer;
 pub mod auth;
 pub mod chat;
 pub mod haproxy;
+pub mod plugin;
 pub mod server;
 pub mod util;
 pub mod version;

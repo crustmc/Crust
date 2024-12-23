@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use slotmap::{DefaultKey, SlotMap};
 use tokio::{net::TcpListener, runtime::Runtime, sync::RwLock, task::JoinHandle};
 
-use crate::{auth::GameProfile, chat::Text, util::{Handle, IOResult}};
+use crate::{auth::GameProfile, chat::Text, plugin::PluginManager, util::{Handle, IOResult}};
 use crate::util::WeakHandle;
 
 pub(crate) mod backend;
@@ -337,6 +337,11 @@ pub fn run_server() {
             config,
             favicon: icon,
         });
+    }
+
+    if !PluginManager::load_plugins() {
+        log::error!("Error while loading plugins, shutting down.");
+        return;
     }
 
     ProxyServer::instance().spawn_task(async move {

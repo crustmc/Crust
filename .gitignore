@@ -1,3 +1,6 @@
 /target
+/crust-plugin-sdk/target
+/crust-example-plugin/target
 /Cargo.lock
+/plugins
 /config.json

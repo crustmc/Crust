@@ -1,0 +1,15 @@
+[package]
+name = "crust-plugin-sdk"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["rlib"]
+test = false
+bench = false
+
+[dependencies]
+paste = "1.0.15"
+
+[features]
+lowlevel = []

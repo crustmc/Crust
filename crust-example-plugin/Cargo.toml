@@ -1,0 +1,25 @@
+[package]
+name = "crust-example-plugin"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+test = false
+bench = false
+
+[profile.dev]
+debug-assertions = true
+overflow-checks = false
+
+[profile.release]
+debug-assertions = false
+overflow-checks = false
+opt-level = 3
+lto = true
+strip = true
+debug = false
+codegen-units = 1
+
+[dependencies]
+crust-plugin-sdk = { path = "../crust-plugin-sdk" }
