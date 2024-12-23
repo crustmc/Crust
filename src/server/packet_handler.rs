@@ -6,7 +6,7 @@ use crate::util::EncodingHelper;
 use crate::version::R1_13;
 use self::{command::CommandSender, packets::{TabCompleteRequest, TabCompleteResponse}};
 
-use super::{brigadier::{ArgumentProperty, CommandNode, CommandNodeType, Commands, StringParserType, SuggestionsType}, command, packet_ids::{ClientPacketType, PacketRegistry, ServerPacketType}, packets::{ClientSettings, Kick, ProtocolState, SystemChatMessage, UnsignedClientCommand}, proxy_handler::ConnectionHandle, ProxiedPlayer, SlotId};
+use super::{brigadier::{ArgumentProperty, CommandNode, CommandNodeType, Commands, StringParserType, SuggestionsType}, command, nbt, packet_ids::{ClientPacketType, PacketRegistry, ServerPacketType}, packets::{ClientSettings, Kick, ProtocolState, SystemChatMessage, UnsignedClientCommand}, proxy_handler::ConnectionHandle, ProxiedPlayer, SlotId};
 
 pub struct ClientPacketHandler;
 
@@ -164,8 +164,27 @@ impl ServerPacketHandler {
                     }
                     return Ok(false);
                 }
-                
+
                 if packet.channel == "BungeeCord" {
+
+                    let mut input = Cursor::new(packet.data);
+                    let sub_channel = nbt::read_java_utf(&mut input)?;
+                    match sub_channel.as_str() {
+                        "KickPlayerRaw" => {
+                            let player_name = nbt::read_java_utf(&mut input)?;
+                            //ProxyServer::instance().players().read().await.iter().filter( |(id, player_ref)| player_ref.profile.name == player_name)
+                            let lock = ProxyServer::instance().players().read().await;
+                            let player = lock.iter().find( |(id, player_ref)| player_ref.profile.name == player_name);
+                            if let Some((_, player)) = player {
+                                player.kick(Text::new("a")).await?;
+                            }
+                            todo!()
+                        }
+                        _ => {
+                            todo!()
+                        }
+                    }
+
                     return Ok(false);
                 }
                 

@@ -1,5 +1,6 @@
 use crate::{chat::*, server::{brigadier::{Suggestion, Suggestions}, ProxyServer}};
-
+use crate::server::ProxiedPlayer;
+use crate::util::Handle;
 use super::{CommandRegistryBuilder, CommandSender};
 
 pub fn register_all(builder: CommandRegistryBuilder) -> CommandRegistryBuilder {
@@ -8,7 +9,59 @@ pub fn register_all(builder: CommandRegistryBuilder) -> CommandRegistryBuilder {
             ["server"], Default::default(), server_command, Some(server_command_completer),
             "crust.command.server", "Switches the player to another server"
         )
+        .core_command(
+            ["gkick"], Default::default(), gkick_command, Some(gkick_command_completer),
+            "crust.command.gkick", "Kick a player from the proxy"
+        )
 }
+
+fn gkick_command(sender: &CommandSender, _name: &str, mut args: Vec<&str>) {
+    if args.is_empty() {
+        sender.send_message(TextBuilder::new("Usage: /gkick <player> [reason]").style(Style::empty().with_color(TextColor::Red)));
+        return;
+    }
+    let player = ProxyServer::instance().get_player_by_name_blocking(args.first().unwrap());
+    if let Some(player) = player {
+        match player.upgrade() {
+            None => {}
+            Some(player) => {
+                if args.len() > 1 {
+                    args.remove(0);
+                    let str = args.join(" ");
+                    ProxyServer::instance().block_on( async move {
+                        player.kick(Text::new(str)).await.ok();
+                    });
+                } else {
+                    ProxyServer::instance().block_on(async move {
+                        player.kick(TextBuilder::new("You have been kicked off the proxy").style(Style::empty().with_color(TextColor::Red)).build()).await.ok();
+                    });
+                }
+                return;
+            }
+        }
+    }
+    sender.send_message(TextBuilder::new(format!("Player {} not found", args.first().unwrap())))
+}
+
+
+fn gkick_command_completer(_sender: &CommandSender, _name: &str, args: Vec<&str>, suggestions: &mut Suggestions) {
+    if args.len() != 1 {
+        return;
+    }
+    let filter = args.first().unwrap();
+    let players = ProxyServer::instance().players().blocking_read();
+    for (_, player) in players.iter() {
+        if !player.profile.name.starts_with(filter) {
+            continue;
+        }
+        suggestions.matches.push(Suggestion {
+            text: player.profile.name.clone(),
+            tooltip: None,
+        });
+    }
+   
+}
+
 
 fn server_command(sender: &CommandSender, _name: &str, args: Vec<&str>) {
     if !sender.is_player() {
@@ -29,10 +82,10 @@ fn server_command(sender: &CommandSender, _name: &str, args: Vec<&str>) {
             }
             let mut text = Text::new(info.label.as_str());
             text.click_event = Some(ClickEvent {
-                action: crate::chat::ClickAction::RunCommand,
+                action: ClickAction::RunCommand,
                 value: format!("/server {}", info.label),
             });
-            text.hover_event = Some(crate::chat::HoverEvent::ShowText(Box::new(Text::new("click to connect"))));
+            text.hover_event = Some(HoverEvent::ShowText(Box::new(Text::new("click to connect"))));
             builder.add_extra(text);
         }
         drop(servers);
@@ -64,7 +117,7 @@ fn server_command_completer(_sender: &CommandSender, _name: &str, args: Vec<&str
         }
         suggestions.matches.push(Suggestion {
             text: info.label.clone(),
-            tooltip: Some(Text::new("click to connect")),
+            tooltip: None,
         });
     }
 }

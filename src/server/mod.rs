@@ -1,5 +1,5 @@
 use std::{collections::HashMap, future::Future, io::Cursor, path::{Path, PathBuf}, sync::atomic::Ordering, time::{Duration, Instant}};
-
+use std::sync::Weak;
 use base64::Engine;
 use command::{CommandRegistry, CommandRegistryBuilder};
 use image::{imageops::FilterType, ImageFormat};
@@ -11,6 +11,7 @@ use slotmap::{DefaultKey, SlotMap};
 use tokio::{net::TcpListener, runtime::Runtime, sync::RwLock, task::JoinHandle};
 
 use crate::{auth::GameProfile, chat::Text, util::{Handle, IOResult}};
+use crate::util::WeakHandle;
 
 pub(crate) mod backend;
 pub(crate) mod brigadier;
@@ -178,6 +179,26 @@ impl ProxyServer {
     
     pub fn players(&self) -> &RwLock<SlotMap<SlotId, Handle<ProxiedPlayer>>> {
         &self.players
+    }
+    
+    pub async fn get_player_by_name(&self, name: &str) -> Option<WeakHandle<ProxiedPlayer>> {
+        let lock = self.players.read().await;
+        let player = lock.iter().find( |(_, player_ref)| player_ref.profile.name.eq_ignore_ascii_case(name));
+        if let Some((_, player_ref)) = player {
+            Some(player_ref.downgrade())
+        } else {
+            None
+        }
+    }
+
+    pub fn get_player_by_name_blocking(&self, name: &str) -> Option<WeakHandle<ProxiedPlayer>> {
+        let lock = self.players.blocking_read();
+        let player = lock.iter().find( |(_, player_ref)| player_ref.profile.name.eq_ignore_ascii_case(name));
+        if let Some((_, player_ref)) = player {
+            Some(player_ref.downgrade())
+        } else {
+            None
+        }
     }
     
     pub fn rsa_private_key(&self) -> &RsaPrivateKey {
@@ -382,6 +403,17 @@ impl ProxiedPlayer {
         } else {
             println!("packet not in current state");
         }
+        Ok(())
+    }
+    
+    pub async fn kick(&self, text: Text) -> IOResult<()> {
+        let kick_packet = packets::Kick { text };
+        let data = packets::get_full_server_packet_buf(&kick_packet, self.protocol_version, self.client_handle.protocol_state())?;
+        if let Some(data) = data {
+            self.client_handle.queue_packet(data, true).await?;
+            self.client_handle.sync().await?;
+        }
+        self.client_handle.disconnect("player kicked").await;
         Ok(())
     }
 
