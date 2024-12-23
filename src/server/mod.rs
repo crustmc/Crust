@@ -411,8 +411,8 @@ impl ProxiedPlayer {
         Ok(())
     }
     
-    pub async fn kick(&self, text: Text) -> IOResult<()> {
-        let kick_packet = packets::Kick { text };
+    pub async fn kick<T: Into<Text>>(&self, text: T) -> IOResult<()> {
+        let kick_packet = packets::Kick { text: text.into() };
         let data = packets::get_full_server_packet_buf(&kick_packet, self.protocol_version, self.client_handle.protocol_state())?;
         if let Some(data) = data {
             self.client_handle.queue_packet(data, true).await?;
