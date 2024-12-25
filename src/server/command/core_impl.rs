@@ -35,7 +35,7 @@ pub fn register_all(builder: CommandRegistryBuilder) -> CommandRegistryBuilder {
         )
 }
 
-fn end_command(sender: &CommandSender, _name: &str, args: Vec<&str>) {
+fn end_command(_sender: &CommandSender, _name: &str, _args: Vec<&str>) {
     // if args.get(1).unwrap().is_empty() {
     //     API.shutdown_proxy(None);
     // } else {

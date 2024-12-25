@@ -6,7 +6,6 @@ use rsa::{pkcs8::EncodePublicKey, Pkcs1v15Encrypt};
 use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::TcpStream};
 
 use crate::{auth::GameProfile, chat::{Text, TextContent}, haproxy::{HAProxyAdresses, HAProxyCommand, HAProxyMessage, HAProxyMessageV1, HAProxyMessageV2, HAProxyProtocolFamily}, server::{packet_ids::{ClientPacketType, PacketRegistry}, packets::{read_and_decode_packet, EncryptionResponse, Packet, ProtocolState}}, util::{EncodingHelper, IOError, IOErrorKind, IOResult, VarInt}};
-use crate::haproxy::HAProxyCommand::Proxy;
 use self::packets::SetCompression;
 
 use super::{encryption::*, packets::{self, encode_and_send_packet, EncryptionRequest, Handshake, LoginDisconnect, LoginRequest, LoginSuccess, PROTOCOL_READ_TIMEOUT, PROTOCOL_STATE_LOGIN, PROTOCOL_STATE_STATUS, PROTOCOL_STATE_TRANSFER}, proxy_handler::ProxyingData, ProxyServer};

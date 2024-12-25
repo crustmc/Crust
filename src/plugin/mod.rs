@@ -1,7 +1,6 @@
 use std::path::Path;
 
 use api::PluginMetadata;
-use rsa::pkcs8::der::zeroize::Zeroize;
 use serde::Deserialize;
 use wasmer::{Imports, Instance, Module, Store, TypedFunction, WasmPtr};
 
@@ -91,7 +90,7 @@ impl PluginManager {
 
         let query_metadata: TypedFunction<(), WasmPtr<u8>> = instance.exports.get_typed_function(&store, "CrustPlugin_QueryMetadata")
             .map_err(|e| format!("Failed to get symbol 'CrustPlugin_QueryMetadata': {}", e))?;
-        let entry_point: TypedFunction<WasmPtr<u8>, i8> = instance.exports.get_typed_function(&store, "CrustPlugin_EntryPoint")
+        let _entry_point: TypedFunction<WasmPtr<u8>, i8> = instance.exports.get_typed_function(&store, "CrustPlugin_EntryPoint")
             .map_err(|e| format!("Failed to get symbol 'CrustPlugin_EntryPoint': {}", e))?;
 
         let memory = instance.exports.get_memory("memory").map_err(|e| format!("Failed to get memory: {}", e))?;

@@ -1,6 +1,4 @@
 use std::{collections::HashMap, future::Future, io::Cursor, path::{Path, PathBuf}, sync::atomic::Ordering, time::{Duration, Instant}};
-use std::ops::Deref;
-use std::sync::Weak;
 use base64::Engine;
 use command::{CommandRegistry, CommandRegistryBuilder};
 use image::{imageops::FilterType, ImageFormat};
@@ -11,9 +9,7 @@ use rsa::{RsaPrivateKey, RsaPublicKey};
 use serde::{Deserialize, Serialize};
 use slotmap::{DefaultKey, SlotMap};
 use tokio::{net::TcpListener, runtime::Runtime, sync::RwLock, task::JoinHandle};
-use wasmer::wasmparser::names::ComponentNameKind::Hash;
-use crate::{auth::GameProfile, chat::Text, plugin::PluginManager, util::{Handle, IOResult}};
-use crate::permission::{Group, User};
+use crate::{auth::GameProfile, chat::Text, hash_map, plugin::PluginManager, util::{Handle, IOResult}};
 use crate::util::WeakHandle;
 
 pub(crate) mod backend;
@@ -54,7 +50,6 @@ pub struct ProxyConfig {
     pub proxy_protocol: bool,
     pub groups: HashMap<String, Vec<String>>,
     pub users: HashMap<String, Vec<String>>,
-
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -65,14 +60,6 @@ pub struct ServerConfig {
 
 impl Default for ProxyConfig {
     fn default() -> Self {
-
-        let mut default_groups = HashMap::new();
-        default_groups.insert("admin".to_owned(), vec!["crust.command.end".to_owned(), "crust.command.gkick".to_owned(), "crust.command.server".to_owned()]);
-        default_groups.insert("default".to_owned(), vec!["crust.command.server".to_owned()]);
-
-        let mut default_users = HashMap::new();
-        default_users.insert("Outfluencer".to_owned(), vec!["admin".to_owned()]);
-
         Self {
             bind_address: "0.0.0.0:25577".to_owned(),
             worker_threads: 0,
@@ -95,8 +82,11 @@ impl Default for ProxyConfig {
             priorities: vec!["lobby".to_owned()],
             max_packet_per_second: 2000,
             proxy_protocol: false,
-            groups: default_groups,
-            users: default_users
+            groups: hash_map! {
+                "admin".to_owned() => vec!["crust.command.end".to_owned(), "crust.command.gkick".to_owned(), "crust.command.server".to_owned()],
+                "default".to_owned() => vec!["crust.command.server".to_owned()]
+            },
+            users: hash_map!("Outfluencer".to_owned() => vec!["admin".to_owned()]),
         }
     }
 }

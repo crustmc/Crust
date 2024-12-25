@@ -188,7 +188,7 @@ impl ServerPacketHandler {
                             let player_name = nbt::read_java_utf(&mut input)?;
                             //ProxyServer::instance().players().read().await.iter().filter( |(id, player_ref)| player_ref.profile.name == player_name)
                             let lock = ProxyServer::instance().players().read().await;
-                            let player = lock.iter().find( |(id, player_ref)| player_ref.profile.name == player_name);
+                            let player = lock.iter().find( |(_id, player_ref)| player_ref.profile.name == player_name);
                             if let Some((_, player)) = player {
                                 player.kick(Text::new("a")).await?;
                             }

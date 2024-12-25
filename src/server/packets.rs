@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::{io::{Cursor, ErrorKind, Read, Write}, time::Duration};
 
 use byteorder::{ReadBytesExt, WriteBytesExt, BE};

@@ -17,6 +17,17 @@ pub type IOError = std::io::Error;
 pub type IOErrorKind = std::io::ErrorKind;
 pub type IOResult<T> = std::result::Result<T, IOError>;
 
+#[macro_export]
+macro_rules! hash_map {
+    ($($key:expr => $val:expr),*) => {
+        {
+            let mut map = std::collections::HashMap::new();
+            $(map.insert($key, $val);)*
+            map
+        }
+    }
+}
+
 pub fn generate_uuid(username: &str) -> Uuid {
     uuid::Builder::from_md5_bytes(
         md5::compute(format!("OfflinePlayer:{username}").as_bytes()).into(),

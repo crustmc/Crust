@@ -52,7 +52,7 @@ You should firewall the ports of you backend servers or bind you backend servers
 - [x] inject into Commands packet to make our commands tabable
 - [x] HA-Proxy support
 - [ ] add a plugin system with API and events
-- [ ] simple permission system
+- [x] simple permission system
 - [x] good terminal UI
 - [x] command system
 - [ ] limbo
