@@ -1,13 +1,19 @@
-//#![feature(arbitrary_self_types)]
+extern crate core;
 
-use rustyline::{DefaultEditor, ExternalPrinter};
-use std::io;
-use std::io::Write;
-use env_logger::{Builder, Target, WriteStyle};
-use log::{error, info};
 use crate::plugin::api::API;
 use crate::server::command::CommandSender;
 use crate::server::ProxyServer;
+use core::str;
+use env_logger::{Builder, Target, WriteStyle};
+use log::error;
+use reedline::{
+    ExternalPrinter, Prompt, PromptEditMode, PromptHistorySearch, PromptHistorySearchStatus,
+    Reedline, Signal,
+};
+use std::borrow::Cow;
+use std::fmt::Arguments;
+use std::io;
+use std::io::Write;
 
 pub mod auth;
 pub mod chat;
@@ -17,22 +23,66 @@ pub mod server;
 pub mod util;
 pub mod version;
 
+/********** pipe all the writes ***********/
 struct SharedWriter {
-    printer: Box<dyn ExternalPrinter + Send>,
+    printer: Box<ExternalPrinter<String>>,
 }
-
 impl Write for SharedWriter {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.printer
-            .print(String::from_utf8_lossy(buf).to_string())
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-        Ok(buf.len())
+    fn write(&mut self, _: &[u8]) -> io::Result<usize> {
+        unreachable!("write");
     }
+
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
     }
+
+    fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
+        let str = String::from_utf8_lossy(buf);
+        self.printer
+            .print(str.to_string())
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        Ok(())
+    }
+
+    fn write_fmt(&mut self, _: Arguments<'_>) -> io::Result<()> {
+        unreachable!("write_fmt");
+    }
 }
 
+/**********    custom prompt    ***********/
+struct CrustPrompt;
+
+impl Prompt for CrustPrompt {
+    fn render_prompt_left(&self) -> Cow<str> {
+        Cow::Borrowed("")
+    }
+
+    fn render_prompt_right(&self) -> Cow<str> {
+        Cow::Borrowed("")
+    }
+
+    fn render_prompt_indicator(&self, _: PromptEditMode) -> Cow<str> {
+        "> ".into()
+    }
+
+    fn render_prompt_multiline_indicator(&self) -> Cow<str> {
+        Cow::Borrowed(":::")
+    }
+
+    fn render_prompt_history_search_indicator(
+        &self,
+        history_search: PromptHistorySearch,
+    ) -> Cow<str> {
+        let prefix = match history_search.status {
+            PromptHistorySearchStatus::Passing => "",
+            PromptHistorySearchStatus::Failing => "failing ",
+        };
+        Cow::Owned(format!(
+            "({}reverse-search: {}) ",
+            prefix, history_search.term
+        ))
+    }
+}
 fn main() {
     if std::env::var("RUST_LOG").is_err() {
         #[cfg(debug_assertions)]
@@ -40,35 +90,36 @@ fn main() {
         #[cfg(not(debug_assertions))]
         std::env::set_var("RUST_LOG", "info");
     }
-
-    let mut editor = DefaultEditor::new().unwrap();
-    let external_printer = editor.create_external_printer().unwrap();
-
-    let shared_writer = SharedWriter {
-        printer: Box::new(external_printer),
-    };
+    let printer = ExternalPrinter::default();
 
     Builder::from_default_env()
-        .target(Target::Pipe(Box::new(shared_writer)))
         .write_style(WriteStyle::Always)
-        .filter_module("rustyline", log::LevelFilter::Off)
+        .target(Target::Pipe(Box::new(SharedWriter {
+            printer: Box::new(printer.clone()),
+        })))
         .try_init()
         .unwrap();
 
     server::run_server();
+    let mut line_editor = Reedline::create().with_external_printer(printer);
 
     loop {
-        match editor.readline("> ") {
-            Ok(input) => {
-                let executed = ProxyServer::instance().command_registry().execute(&CommandSender::Console, &input);
-                if !executed {
-                    error!("Unknown command: {}", input);
+        if let Ok(sig) = line_editor.read_line(&CrustPrompt) {
+            match sig {
+                Signal::Success(input) => {
+                    let executed = ProxyServer::instance()
+                        .command_registry()
+                        .execute(&CommandSender::Console, &input);
+                    if !executed {
+                        error!("Unknown command.");
+                    }
+                }
+                Signal::CtrlD | Signal::CtrlC => {
+                    API.shutdown_proxy(None);
                 }
             }
-            Err(err) => {
-                info!("Error reading console line: {:?}", err);
-                API.shutdown_proxy(None);
-            }
+            continue;
         }
+        break;
     }
 }

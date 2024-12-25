@@ -3,6 +3,7 @@ use std::sync::Weak;
 use base64::Engine;
 use command::{CommandRegistry, CommandRegistryBuilder};
 use image::{imageops::FilterType, ImageFormat};
+use log::{error, info, warn};
 use packets::{PlayerPublicKey, ProtocolState, SystemChatMessage};
 use proxy_handler::{ClientHandle, ConnectionHandle, PlayerSyncData};
 use rsa::{RsaPrivateKey, RsaPublicKey};
@@ -232,7 +233,7 @@ impl ProxyServer {
 }
 
 pub fn run_server() {
-    log::info!("Starting {}..", FULL_NAME);
+    info!("Starting {}..", FULL_NAME);
     let config_path = Path::new("config.json");
     let config = if !config_path.exists() {
         let default_config = ProxyConfig::default();
@@ -269,7 +270,7 @@ pub fn run_server() {
                     }
                     let mut png_bytes = Vec::new();
                     if let Err(e) = image.write_to(&mut Cursor::new(&mut png_bytes), ImageFormat::Png) {
-                        log::warn!("Failed to encode favicon: {}", e);
+                        warn!("Failed to encode favicon: {}", e);
                         None
                     } else {
                         let base64 = String::from("data:image/png;base64,") + &base64::engine::general_purpose::STANDARD.encode(&png_bytes);
@@ -286,8 +287,9 @@ pub fn run_server() {
             None
         }
     } else { None };
+    
 
-    log::info!("Loaded proxy config.");
+    info!("Loaded proxy config.");
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -301,11 +303,11 @@ pub fn run_server() {
         return;
     }
     let runtime = runtime.unwrap();
-    log::info!("Started runtime with {} worker threads.", runtime.metrics().num_workers());
+    info!("Started runtime with {} worker threads.", runtime.metrics().num_workers());
 
     let priv_key = RsaPrivateKey::new(&mut rand::thread_rng(), 1024);
     if let Err(e) = priv_key {
-        log::error!("Failed to generate RSA key pair: {}", e);
+        error!("Failed to generate RSA key pair: {}", e);
         return;
     }
     let priv_key = priv_key.unwrap();
@@ -343,10 +345,11 @@ pub fn run_server() {
         log::error!("Error while loading plugins, shutting down.");
         return;
     }
-
+    
     ProxyServer::instance().spawn_task(async move {
         let listener = TcpListener::bind(&ProxyServer::instance().config.bind_address).await.unwrap();
-        log::info!("Listening on {}", listener.local_addr().unwrap());
+
+        info!("Listening on {}", listener.local_addr().unwrap());
         let mut map = HashMap::new();
         let mut time = Instant::now();
         let connection_throttle = ProxyServer::instance().config.connection_throttle_time > 0;
