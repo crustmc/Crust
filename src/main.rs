@@ -5,15 +5,13 @@ use crate::server::command::CommandSender;
 use crate::server::ProxyServer;
 use core::str;
 use env_logger::{Builder, Target, WriteStyle};
-use log::error;
-use reedline::{
-    ExternalPrinter, Prompt, PromptEditMode, PromptHistorySearch, PromptHistorySearchStatus,
-    Reedline, Signal,
-};
+use log::{error, info, LevelFilter};
+use rustyline::{DefaultEditor, ExternalPrinter};
 use std::borrow::Cow;
 use std::fmt::Arguments;
 use std::io;
 use std::io::Write;
+use crust_plugin_sdk::PluginApi;
 
 pub mod auth;
 pub mod chat;
@@ -23,9 +21,22 @@ pub mod server;
 pub mod util;
 pub mod version;
 
+
+#[cfg(windows)]
+pub fn enable_virtual_terminal_processing() {
+    use winapi_util::console::Console;
+
+    if let Ok(mut term) = Console::stdout() {
+        term.set_virtual_terminal_processing(true).ok();
+    }
+    if let Ok(mut term) = Console::stderr() {
+        term.set_virtual_terminal_processing(true).ok();
+    }
+}
+
 /********** pipe all the writes ***********/
 struct SharedWriter {
-    printer: Box<ExternalPrinter<String>>,
+    printer: Box<dyn ExternalPrinter + Send>,
 }
 impl Write for SharedWriter {
     fn write(&mut self, _: &[u8]) -> io::Result<usize> {
@@ -49,77 +60,31 @@ impl Write for SharedWriter {
     }
 }
 
-/**********    custom prompt    ***********/
-struct CrustPrompt;
-
-impl Prompt for CrustPrompt {
-    fn render_prompt_left(&self) -> Cow<str> {
-        Cow::Borrowed("")
-    }
-
-    fn render_prompt_right(&self) -> Cow<str> {
-        Cow::Borrowed("")
-    }
-
-    fn render_prompt_indicator(&self, _: PromptEditMode) -> Cow<str> {
-        "> ".into()
-    }
-
-    fn render_prompt_multiline_indicator(&self) -> Cow<str> {
-        Cow::Borrowed(":::")
-    }
-
-    fn render_prompt_history_search_indicator(
-        &self,
-        history_search: PromptHistorySearch,
-    ) -> Cow<str> {
-        let prefix = match history_search.status {
-            PromptHistorySearchStatus::Passing => "",
-            PromptHistorySearchStatus::Failing => "failing ",
-        };
-        Cow::Owned(format!(
-            "({}reverse-search: {}) ",
-            prefix, history_search.term
-        ))
-    }
-}
 fn main() {
+    #[cfg(windows)]
+    enable_virtual_terminal_processing();
+
     if std::env::var("RUST_LOG").is_err() {
         #[cfg(debug_assertions)]
         std::env::set_var("RUST_LOG", "debug");
         #[cfg(not(debug_assertions))]
         std::env::set_var("RUST_LOG", "info");
     }
-    let printer = ExternalPrinter::default();
+    let mut rl = DefaultEditor::new().unwrap();
+    let printer = rl.create_external_printer().unwrap();
+    let target = Target::Pipe(Box::new(SharedWriter { printer: Box::new(printer) }));
 
     Builder::from_default_env()
         .write_style(WriteStyle::Always)
-        .target(Target::Pipe(Box::new(SharedWriter {
-            printer: Box::new(printer.clone()),
-        })))
+        .filter_module("rustyline", LevelFilter::Off)
+        .target(target)
         .try_init()
         .unwrap();
 
     server::run_server();
-    let mut line_editor = Reedline::create().with_external_printer(printer);
 
-    loop {
-        if let Ok(sig) = line_editor.read_line(&CrustPrompt) {
-            match sig {
-                Signal::Success(input) => {
-                    let executed = ProxyServer::instance()
-                        .command_registry()
-                        .execute(&CommandSender::Console, &input);
-                    if !executed {
-                        error!("Unknown command.");
-                    }
-                }
-                Signal::CtrlD | Signal::CtrlC => {
-                    API.shutdown_proxy(None);
-                }
-            }
-            continue;
-        }
-        break;
+    while let Ok(line) = rl.readline("> ") {
+        ProxyServer::instance().command_registry().execute(&CommandSender::Console, line.as_str());
     }
+    API.shutdown_proxy(None);
 }
