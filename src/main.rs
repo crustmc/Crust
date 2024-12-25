@@ -3,11 +3,12 @@ extern crate core;
 use crate::server::command::CommandSender;
 use crate::server::ProxyServer;
 use env_logger::{Builder, Target, WriteStyle};
-use log::LevelFilter;
+use log::{error, LevelFilter};
 use rustyline::{DefaultEditor, ExternalPrinter};
 use std::fmt::Arguments;
 use std::io;
 use std::io::Write;
+use rustyline::config::{BellStyle, Configurer};
 
 pub mod auth;
 pub mod chat;
@@ -66,6 +67,9 @@ fn main() {
         std::env::set_var("RUST_LOG", "info");
     }
     let mut rl = DefaultEditor::new().unwrap();
+    rl.set_bell_style(BellStyle::None);
+    rl.set_auto_add_history(true);
+    
     let printer = rl.create_external_printer().unwrap();
     let target = Target::Pipe(Box::new(SharedWriter { printer: Box::new(printer) }));
 
@@ -80,7 +84,11 @@ fn main() {
     server::run_server();
 
     while let Ok(line) = rl.readline("> ") {
-        ProxyServer::instance().command_registry().execute(&CommandSender::Console, line.as_str());
+        if line.is_empty() {
+            continue;
+        }
+        if !ProxyServer::instance().command_registry().execute(&CommandSender::Console, line.as_str()) {
+            error!("Unknown command");
+        }
     }
-    //API.shutdown_proxy(None);
 }

@@ -419,10 +419,18 @@ impl ProxiedPlayer {
                     if perms.contains(&perm.to_string()) {
                         return true;
                     }
+                } else {
+                    error!("Group {} is not configured, but used by {}", group, &self.profile.name);
                 }
             }
         }
-        // call permission event
+
+        if let Some(perms) = ProxyServer::instance().config.groups.get("default") {
+            if perms.contains(&perm.to_string()) {
+                return true;
+            }
+        }
+        // todo call permission event
         false
     }
 
