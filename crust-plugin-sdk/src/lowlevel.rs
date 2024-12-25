@@ -5,25 +5,24 @@ use paste::paste;
 use crate::PluginApi;
 
 #[repr(C)]
-pub struct LPluginMetadata {
+#[derive(Debug, Clone)]
+pub struct PluginMetadata {
     pub sdk_version: u32,
-    pub name: *const u8,
-    pub version: *const u8,
-    pub description: *const u8,
-    pub authors: *const *const u8,
-    pub authors_count: usize,
+    pub manifest: PtrWrapper<u8>,
+    pub manifest_len: usize,
 }
 
-impl Default for LPluginMetadata {
-    fn default() -> Self {
-        Self {
-            sdk_version: 0,
-            name: std::ptr::null(),
-            version: std::ptr::null(),
-            description: std::ptr::null(),
-            authors: std::ptr::null(),
-            authors_count: 0,
-        }
+#[repr(C)]
+#[derive(Debug, Clone)]
+pub struct PtrWrapper<T>(*const T);
+
+unsafe impl<T> Send for PtrWrapper<T> {}
+unsafe impl<T> Sync for PtrWrapper<T> {}
+
+impl<T> PtrWrapper<T> {
+    
+    pub const fn new(ptr: *const T) -> Self {
+        Self(ptr)
     }
 }
 

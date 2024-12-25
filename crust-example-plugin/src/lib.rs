@@ -1,9 +1,15 @@
-use crust_plugin_sdk::{PluginApi, PluginMetadata, PLUGIN_SDK_VERSION};
+use crust_plugin_sdk::{PluginApi, PLUGIN_SDK_VERSION, lowlevel::{PluginMetadata, PtrWrapper}};
 
-pub const PLUGIN_NAME: &str = "Crust Example Plugin\0";
-pub const PLUGIN_VERSION: &str = "0.1.0\0";
-pub const PLUGIN_AUTHORS: &[&str] = &["Your Name\0"];
-pub const PLUGIN_DESCRIPTION: &str = "A simple example plugin for Crust\0";
+const fn get_plugin_metadata() -> PluginMetadata {
+    let plugin_manifest = include_str!("../crust-plugin.json");
+    PluginMetadata {
+        sdk_version: PLUGIN_SDK_VERSION,
+        manifest: PtrWrapper::new(plugin_manifest.as_bytes().as_ptr()),
+        manifest_len: plugin_manifest.len(),
+    }
+}
+
+static PLUGIN_METADATA: PluginMetadata = get_plugin_metadata();
 
 static mut API_INSTANCE: Option<PluginApi> = None;
 
@@ -16,13 +22,8 @@ pub fn api() -> &'static PluginApi {
 }
 
 #[no_mangle]
-pub extern "C" fn CrustPlugin_QueryMetadata(metadata: &mut PluginMetadata) -> bool {
-    metadata.set_sdk_version(PLUGIN_SDK_VERSION);
-    metadata.set_name(PLUGIN_NAME);
-    metadata.set_version(PLUGIN_VERSION);
-    metadata.set_authors(PLUGIN_AUTHORS);
-    metadata.set_description(PLUGIN_DESCRIPTION);
-    true
+pub extern "C" fn CrustPlugin_QueryMetadata() -> *const PluginMetadata {
+    &PLUGIN_METADATA as *const PluginMetadata
 }
 
 #[no_mangle]

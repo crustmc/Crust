@@ -1,14 +1,15 @@
 use std::path::Path;
 
-use api::API;
-use crust_plugin_sdk::{PluginEntryPointFunc, PluginMetadata, PluginQueryMetadataFunc, PLUGIN_ENTRY_POINT_SYMBOL_NAME, PLUGIN_QUERY_METADATA_SYMBOL_NAME};
-use libloading::Library;
+use api::PluginMetadata;
+use rsa::pkcs8::der::zeroize::Zeroize;
+use serde::Deserialize;
+use wasmer::{Imports, Instance, Module, Store, TypedFunction, WasmPtr};
 
 pub mod api;
 
 pub const MIN_SUPPORTED_SDK_VERSION: u32 = 1;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct PluginInfo {
     pub name: String,
     pub version: String,
@@ -61,7 +62,7 @@ impl PluginManager {
             };
             let path = entry.path();
             if let Some(extension) = path.extension() {
-                if extension == std::env::consts::DLL_EXTENSION {
+                if extension == "wasm" {
                     unsafe {
                         #[allow(static_mut_refs)]
                         let pm = PLUGIN_MANAGER.as_mut().unwrap();
@@ -83,56 +84,54 @@ impl PluginManager {
     }
 
     unsafe fn load_plugin(path: &Path) -> Result<Plugin, Box<dyn std::error::Error>> {
-        let library = Library::new(path)?;
-        let query_metadata = library.get::<PluginQueryMetadataFunc>(PLUGIN_QUERY_METADATA_SYMBOL_NAME.as_bytes())
-            .map_err(|e| format!("Failed to get symbol '{}': {}", PLUGIN_QUERY_METADATA_SYMBOL_NAME, e))?;
-        let entry_point = library.get::<PluginEntryPointFunc>(PLUGIN_ENTRY_POINT_SYMBOL_NAME.as_bytes())
-            .map_err(|e| format!("Failed to get symbol '{}': {}", PLUGIN_ENTRY_POINT_SYMBOL_NAME, e))?;
+        let mut store = Store::default();
+        let module = Module::from_file(&store, path)?;
 
-        let mut metadata = PluginMetadata::default();
-        if !query_metadata(&mut metadata) {
+        let instance = Instance::new(&mut store, &module, &Imports::default())?;
+
+        let query_metadata: TypedFunction<(), WasmPtr<u8>> = instance.exports.get_typed_function(&store, "CrustPlugin_QueryMetadata")
+            .map_err(|e| format!("Failed to get symbol 'CrustPlugin_QueryMetadata': {}", e))?;
+        let entry_point: TypedFunction<WasmPtr<u8>, i8> = instance.exports.get_typed_function(&store, "CrustPlugin_EntryPoint")
+            .map_err(|e| format!("Failed to get symbol 'CrustPlugin_EntryPoint': {}", e))?;
+
+        let memory = instance.exports.get_memory("memory").map_err(|e| format!("Failed to get memory: {}", e))?;
+        if memory.view(&store).size().0 < 1 {
+            memory.grow(&mut store, 1).map_err(|e| format!("Failed to grow memory: {}", e))?;
+        }
+
+        println!("Querying metadata for plugin: {}", path.display());
+        let metadata_ptr = query_metadata.call(&mut store).map_err(|e| format!("Failed to call 'CrustPlugin_QueryMetadata': {}", e))?;
+        if metadata_ptr.is_null() {
             return Err("Plugin rejected metadata query".into());
         }
 
-        let name = match metadata.name() {
-            Some(Ok(n)) => n.to_string(),
-            _ => return Err("Plugin didn't provide a valid name".into()),
-        };
-        let version = match metadata.version() {
-            Some(Ok(v)) => v.to_string(),
-            _ => return Err("Plugin didn't provide a valid version".into()),
-        };
-        let authors = match metadata.authors().map(|a| a.map(|a| a.to_string())).collect::<Result<Vec<String>, _>>()
-            .map_err(|e| format!("Failed to get authors: {}", e)) {
-            Ok(a) => a,
-            Err(e) => return Err(e.into()),
-        };
-        let description = match metadata.description() {
-            Some(Ok(d)) => d.to_string(),
-            _ => return Err("Plugin didn't provide a valid description".into()),
-        };
-
-        if !entry_point(&API) {
-            return Err(format!("Failed to initialize plugin '{}'", name).into());
+        let mem_view = memory.view(&store);
+        let start = metadata_ptr.offset() as u64;
+        let metadata_bytes = mem_view.copy_range_to_vec(start..start + std::mem::size_of::<PluginMetadata>() as u64)
+            .map_err(|e| format!("Failed to copy metadata bytes: {}", e))?;
+        let metadata = unsafe { &*(metadata_bytes.as_ptr() as *const PluginMetadata) };
+        let sdk_version = metadata.sdk_version;
+        if sdk_version < MIN_SUPPORTED_SDK_VERSION {
+            return Err(format!("Failed to load plugin '{}': SDK version {} is not supported, minimum supported version is {}", path.display(), sdk_version, MIN_SUPPORTED_SDK_VERSION).into());
         }
+        let start = metadata.manifest.offset() as u64;
+        let len = metadata.manifest_len.offset() as u64;
+        let manifest = mem_view.copy_range_to_vec(start..start + len)
+            .map_err(|e| format!("Failed to copy manifest bytes: {}", e))?;
+        let manifest = std::str::from_utf8(&manifest).map_err(|e| format!("Failed to parse manifest UTF-8 bytes: {}", e))?;
+        let manifest = serde_json::from_str::<PluginInfo>(manifest)
+            .map_err(|e| format!("Failed to parse manifest JSON: {}", e))?;
 
-        let plugin = Plugin {
-            _library: library,
-            info: PluginInfo {
-                name,
-                version,
-                authors,
-                description,
-            },
-        };
+        // if !entry_point(&API) {
+        //     return Err(format!("Failed to initialize plugin '{}'", name).into());
+        // }
 
-        log::info!("PluginInfo: {:#?}", plugin.info);
-
-        Ok(plugin)
+        Ok(Plugin {
+            info: manifest,
+        })
     }
 }
 
 pub struct Plugin {
-    _library: Library,
     info: PluginInfo,
 }

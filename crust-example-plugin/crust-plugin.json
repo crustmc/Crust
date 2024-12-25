@@ -1,0 +1,8 @@
+{
+    "name": "Crust Example Plugin",
+    "version": "1.0.0",
+    "description": "An example plugin for Crust",
+    "authors": [
+        "<Your Name>"
+    ]
+}

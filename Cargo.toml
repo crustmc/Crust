@@ -19,7 +19,6 @@ strip = true
 codegen-units = 1
 
 [dependencies]
-crust-plugin-sdk = { path = "crust-plugin-sdk", features = ["lowlevel"] }
 base64 = "0.22.1"
 byteorder = "1.5.0"
 cesu8 = "1.1.0"
@@ -45,8 +44,9 @@ uuid = { version = "1.11.0", features = ["v4"] }
 paste = "1.0.15"
 const_format = "0.2.34"
 reqwest = { version = "0.12.9"  }
-libloading = "0.8.6"
 rustyline = "15.0.0"
+wasmer = "5.0.4"
+bytemuck = "1.21.0"
 
 [target.'cfg(not(target_os = "windows"))'.dependencies]
 flate2 = { version = "1.0.35", features = ["zlib-ng"], default-features = false }
@@ -57,3 +57,6 @@ flate2 = { version = "1.0.35", features = ["cloudflare_zlib"], default-features 
 aes = "0.8.4"
 cfb8 = "0.8.1"
 winapi-util = "0.1.9"
+
+[features]
+wasm-llvm = ["wasmer/llvm"]

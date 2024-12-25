@@ -6,7 +6,6 @@ use crate::{
         ProxyServer,
     },
 };
-use crate::plugin::api::API;
 
 pub fn register_all(builder: CommandRegistryBuilder) -> CommandRegistryBuilder {
     builder
@@ -37,11 +36,12 @@ pub fn register_all(builder: CommandRegistryBuilder) -> CommandRegistryBuilder {
 }
 
 fn end_command(sender: &CommandSender, _name: &str, args: Vec<&str>) {
-    if args.get(1).unwrap().is_empty() {
-        API.shutdown_proxy(None);
-    } else {
-        API.shutdown_proxy(Some(&*args.get(1).unwrap().replace("&", "§")));
-    }
+    // if args.get(1).unwrap().is_empty() {
+    //     API.shutdown_proxy(None);
+    // } else {
+    //     API.shutdown_proxy(Some(&*args.get(1).unwrap().replace("&", "§")));
+    // }
+    std::process::exit(0);
 }
 
 fn gkick_command(sender: &CommandSender, _name: &str, mut args: Vec<&str>) {

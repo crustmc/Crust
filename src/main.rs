@@ -1,17 +1,13 @@
 extern crate core;
 
-use crate::plugin::api::API;
 use crate::server::command::CommandSender;
 use crate::server::ProxyServer;
-use core::str;
 use env_logger::{Builder, Target, WriteStyle};
-use log::{error, info, LevelFilter};
+use log::LevelFilter;
 use rustyline::{DefaultEditor, ExternalPrinter};
-use std::borrow::Cow;
 use std::fmt::Arguments;
 use std::io;
 use std::io::Write;
-use crust_plugin_sdk::PluginApi;
 
 pub mod auth;
 pub mod chat;
@@ -77,6 +73,7 @@ fn main() {
     Builder::from_default_env()
         .write_style(WriteStyle::Always)
         .filter_module("rustyline", LevelFilter::Off)
+        .filter_module("cranelift_codegen", LevelFilter::Off)
         .target(target)
         .try_init()
         .unwrap();
@@ -86,5 +83,5 @@ fn main() {
     while let Ok(line) = rl.readline("> ") {
         ProxyServer::instance().command_registry().execute(&CommandSender::Console, line.as_str());
     }
-    API.shutdown_proxy(None);
+    //API.shutdown_proxy(None);
 }
