@@ -28,15 +28,3 @@ jobs:
       with:
         name: crust-linux-x86_64
         path: target/x86_64-unknown-linux-musl/release/crust
-        
-  build-linux-aarch64:
-    runs-on: self-hosted
-    steps:
-    - uses: actions/checkout@v4
-    - name: Build
-      run: /home/bert/.cargo/bin/cargo build --release --target aarch64-unknown-linux-musl --verbose
-    - name: Save artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: crust-linux-aarch64
-        path: target/aarch64-unknown-linux-musl/release/crust
