@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{chat::Text, util::WeakHandle};
-
+use crate::chat::{Style, TextBuilder, TextColor};
 use super::{brigadier::Suggestions, ProxiedPlayer, ProxyServer};
 
 pub(crate) mod core_impl;
@@ -128,6 +128,10 @@ impl CommandRegistry {
         let mut parts = command.splitn(2, ' ');
         let name = parts.next().unwrap();
         self.get_command_by_name(name).map_or(false, |info| {
+            if !sender.has_permission(info.permission.as_str()) {
+                sender.send_message(TextBuilder::new("You do not have permission to run this command!").style(Style::empty().with_color(TextColor::Red)).build());
+                return true;
+            }
             let args = parts.next().unwrap_or("");
             let args = match info.arg_type {
                 CommandArgType::TextSplitBySpace => if args.is_empty() { vec![] } else { args.split_ascii_whitespace().collect::<Vec<&str>>() },
@@ -145,6 +149,11 @@ impl CommandRegistry {
         let mut parts = command.splitn(2, ' ');
         let name = parts.next().unwrap();
         self.get_command_by_name(name).map_or(None, |info| {
+
+            if !sender.has_permission(info.permission.as_str()) {
+                return Some(None);
+            }
+            
             let mut suggestions = Suggestions { start: 0, length: 0, matches: Vec::new() };
             let args = parts.next().unwrap_or("");
             let args = match info.arg_type {
@@ -224,10 +233,16 @@ impl CommandSender {
         }
     }
 
-    pub fn has_permission(&self, _permission: &str) -> bool {
+    pub fn has_permission(&self, permission: &str) -> bool {
         match self {
             CommandSender::Console => true,
-            CommandSender::Player(_) => true, // TODO: Implement permissions
+            CommandSender::Player(player) => {
+                if let Some(player) = player.upgrade() {
+                    player.has_permission(permission)
+                } else {
+                    false
+                }
+            }
         }
     }
 }

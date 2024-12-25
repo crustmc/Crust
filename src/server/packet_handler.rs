@@ -101,7 +101,7 @@ pub fn switch_server_helper(player: WeakHandle<ProxiedPlayer>, server_id: SlotId
 pub struct ServerPacketHandler;
 
 impl ServerPacketHandler {
-    pub async fn handle_packet(packet_id: i32, buffer: &[u8], version: i32, _player: &WeakHandle<ProxiedPlayer>, server_handle: &ConnectionHandle, client_handle: &ConnectionHandle) -> IOResult<bool> {
+    pub async fn handle_packet(packet_id: i32, buffer: &[u8], version: i32, player: &WeakHandle<ProxiedPlayer>, server_handle: &ConnectionHandle, client_handle: &ConnectionHandle) -> IOResult<bool> {
         if let Some(packet_type) = PacketRegistry::instance().get_server_packet_type(server_handle.protocol_state(), version, packet_id) { match packet_type {
             ServerPacketType::BundleDelimiter => {
                 let _ = client_handle.on_bundle().await;
@@ -124,7 +124,18 @@ impl ServerPacketHandler {
             }
             ServerPacketType::Commands => {
                 let mut commands = Commands::decode(&mut Cursor::new(buffer), version)?;
+                
+                let player = player.upgrade();
+                if player.is_none() {
+                    return Ok(false);
+                }
+                let player = player.unwrap();
+                
                 for info in ProxyServer::instance().command_registry().all_commands() {
+                    if !player.has_permission(info.permission.as_str()) {
+                        continue;
+                    }
+                    
                     let arg_index = commands.nodes.len();
                     commands.nodes.push(CommandNode {
                         childrens: Vec::new(),
@@ -148,6 +159,9 @@ impl ServerPacketHandler {
                         commands.nodes[commands.root_index].childrens.push(node_index);
                     }
                 }
+                
+                drop(player);
+                
                 if let Some(packet_buf) = packets::get_full_server_packet_buf(&commands, version, server_handle.protocol_state())? {
                     let _ = client_handle.queue_packet(packet_buf, false).await;
                 }

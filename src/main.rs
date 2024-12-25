@@ -16,7 +16,7 @@ pub mod plugin;
 pub mod server;
 pub mod util;
 pub mod version;
-
+pub mod permission;
 
 #[cfg(windows)]
 pub fn enable_virtual_terminal_processing() {

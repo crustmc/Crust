@@ -1,12 +1,12 @@
 use std::{io::Cursor, net::SocketAddr};
-
+use std::time::Duration;
 use byteorder::{WriteBytesExt, BE};
 use rand::RngCore;
 use rsa::{pkcs8::EncodePublicKey, Pkcs1v15Encrypt};
 use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::TcpStream};
 
 use crate::{auth::GameProfile, chat::{Text, TextContent}, haproxy::{HAProxyAdresses, HAProxyCommand, HAProxyMessage, HAProxyMessageV1, HAProxyMessageV2, HAProxyProtocolFamily}, server::{packet_ids::{ClientPacketType, PacketRegistry}, packets::{read_and_decode_packet, EncryptionResponse, Packet, ProtocolState}}, util::{EncodingHelper, IOError, IOErrorKind, IOResult, VarInt}};
-
+use crate::haproxy::HAProxyCommand::Proxy;
 use self::packets::SetCompression;
 
 use super::{encryption::*, packets::{self, encode_and_send_packet, EncryptionRequest, Handshake, LoginDisconnect, LoginRequest, LoginSuccess, PROTOCOL_READ_TIMEOUT, PROTOCOL_STATE_LOGIN, PROTOCOL_STATE_STATUS, PROTOCOL_STATE_TRANSFER}, proxy_handler::ProxyingData, ProxyServer};
@@ -82,6 +82,12 @@ pub async fn handle(mut stream: TcpStream, mut peer_addr: SocketAddr) {
                     return;
                 }
                 PROTOCOL_STATE_LOGIN | PROTOCOL_STATE_TRANSFER => {
+                    
+                    if ProxyServer::instance().player_count as isize >= ProxyServer::instance().config.max_players as isize {
+                        send_login_disconnect(&mut stream, &mut buffer, Text::new(TextContent::literal("§cThe proxy is full".into())), handshake.version, -1, &mut None).await.ok();
+                        return;
+                    }
+                    
                     match handle_login(&mut stream, handshake, &mut buffer, peer_addr).await {
                         Ok(state) => state,
                         Err(e) => {
@@ -172,6 +178,7 @@ pub async fn send_login_disconnect(stream: &mut TcpStream, buffer: &mut Vec<u8>,
         text
     }, version, ProtocolState::Login)?;
     encode_and_send_packet(stream, buffer, &mut vec![], compression, encryption).await?;
+    tokio::time::sleep(Duration::from_millis(250)).await;
     Ok(())
 }
 
