@@ -47,6 +47,7 @@ pub struct ProxyConfig {
     pub spigot_forward: bool,
     pub priorities: Vec<String>,
     pub max_packet_per_second: i32,
+    pub restrict_tab_completes: bool,
     pub proxy_protocol: bool,
     pub groups: HashMap<String, Vec<String>>,
     pub users: HashMap<String, Vec<String>>,
@@ -73,6 +74,7 @@ impl Default for ProxyConfig {
             offline_mode_encryption: false,
             prevent_proxy_connections: false,
             spigot_forward: true,
+            restrict_tab_completes: true,
             servers: vec![
                 ServerConfig {
                     label: "lobby".to_owned(),
@@ -345,11 +347,13 @@ pub fn run_server() {
             favicon: icon,
         });
     }
-
-    if !PluginManager::load_plugins() {
-        log::error!("Error while loading plugins, shutting down.");
-        return;
-    }
+    
+    ProxyServer::instance().block_on(async move {
+        if !PluginManager::load_plugins() {
+            log::error!("Error while loading plugins, shutting down.");
+            return;
+        }
+    });
     
     ProxyServer::instance().spawn_task(async move {
         let listener = TcpListener::bind(&ProxyServer::instance().config.bind_address).await.unwrap();
@@ -509,7 +513,7 @@ impl ProxiedPlayer {
 
                 let _ = player.client_handle.drop_redundant(false).await;
             } else {
-                log::warn!("Player {} is not in game state, cancelling server switch.", username);
+                warn!("Player {} is not in game state, cancelling server switch.", username);
                 player.sync_data.is_switching_server.store(false, Ordering::Relaxed);
                 return false;
             }

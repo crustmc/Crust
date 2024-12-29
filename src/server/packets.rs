@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use crate::{auth::{GameProfile, Property}, chat::Text, server::nbt, util::{EncodingHelper, IOError, IOErrorKind, IOResult, VarInt}, version::*};
 
-use super::{brigadier::Suggestions, compression::RefSizeLimitedReader, encryption::{PacketDecryption, PacketEncryption}, nbt::NbtType, packet_ids::{ClientPacketType, PacketRegistry, ServerPacketType}};
+use super::{brigadier::Suggestions, compression::RefSizeLimitedReader, encryption::{PacketDecryption, PacketEncryption}, nbt::NbtType, packet_ids::{ClientPacketType, PacketRegistry, ServerPacketType}, ProxyServer};
 
 pub const PROTOCOL_READ_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -939,6 +939,11 @@ impl Packet for TabCompleteRequest {
                 position = Some(src.read_i64::<BE>()?);
             }
         }
+
+        if ProxyServer::instance().config.restrict_tab_completes && cursor.len() > 256 {
+            return Err(IOError::new(ErrorKind::InvalidData, "tab completes can only be up to 256 chars"));
+        }
+
         Ok(Self {
             transaction_id,
             cursor,
