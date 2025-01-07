@@ -1,8 +1,15 @@
-use std::path::Path;
-
+use crate::server::ProxyServer;
 use api::PluginMetadata;
+use log::{debug, error, info, warn};
 use serde::Deserialize;
-use wasmer::{Imports, Instance, Module, Store, TypedFunction, WasmPtr};
+use std::path::Path;
+use std::sync::Arc;
+use tokio::runtime;
+use wasmer::{imports, Function, FunctionEnv, Imports, Instance, MemoryView, Module, Store, TypedFunction, Value, WasmPtr};
+use wasmer_wasix::capabilities::{Capabilities, CapabilityThreadingV1};
+use wasmer_wasix::http::HttpClientCapabilityV1;
+use wasmer_wasix::runtime::task_manager::tokio::TokioTaskManager;
+use wasmer_wasix::{fs, WasiEnv, WasiEnvBuilder, WasiVersion};
 
 pub mod api;
 
@@ -23,12 +30,13 @@ pub struct PluginManager {
 static mut PLUGIN_MANAGER: Option<PluginManager> = None;
 
 impl PluginManager {
-
     #[inline]
     pub fn instance() -> &'static PluginManager {
         unsafe {
             #[allow(static_mut_refs)]
-            PLUGIN_MANAGER.as_ref().expect("PluginManager is not initialized")
+            PLUGIN_MANAGER
+                .as_ref()
+                .expect("PluginManager is not initialized")
         }
     }
 
@@ -49,15 +57,18 @@ impl PluginManager {
             Err(e) => {
                 log::error!("Failed to read plugins directory: {}", e);
                 return false;
-            },
+            }
         };
         for entry in rd {
             let entry = match entry {
                 Ok(e) => e,
                 Err(e) => {
-                    log::error!("Failed to read entry in plugins directory, skipping this entry: {}", e);
+                    log::error!(
+                        "Failed to read entry in plugins directory, skipping this entry: {}",
+                        e
+                    );
                     continue;
-                },
+                }
             };
             let path = entry.path();
             if let Some(extension) = path.extension() {
@@ -69,9 +80,13 @@ impl PluginManager {
                         let plugin = match res {
                             Ok(p) => p,
                             Err(e) => {
-                                log::error!("FATAL: Failed to load plugin '{}': {}", path.display(), e);
+                                log::error!(
+                                    "FATAL: Failed to load plugin '{}': {}",
+                                    path.display(),
+                                    e
+                                );
                                 return false;
-                            },
+                            }
                         };
                         log::info!("Loaded plugin: {}", plugin.info.name);
                         pm.plugins.push(plugin);
@@ -84,29 +99,60 @@ impl PluginManager {
 
     unsafe fn load_plugin(path: &Path) -> Result<Plugin, Box<dyn std::error::Error>> {
         let mut store = Store::default();
+        let caps = Capabilities {
+            insecure_allow_all: true,
+            http_client: HttpClientCapabilityV1::new_allow_all(),
+            threading: CapabilityThreadingV1::default(),
+        };
+        let mut builder = WasiEnvBuilder::new("Crust").fs(Box::new(fs::default_fs_backing()));
+        builder.set_capabilities(caps);
         let module = Module::from_file(&store, path)?;
 
-        let instance = Instance::new(&mut store, &module, &Imports::default())?;
-
-        let query_metadata: TypedFunction<(), WasmPtr<u8>> = instance.exports.get_typed_function(&store, "CrustPlugin_QueryMetadata")
+        let (instance, wasi_env) = builder.instantiate(module, &mut store)?;
+      //  wasi_env.
+        // todo memory fixing
+        // wasi_env.im
+        let query_metadata: TypedFunction<(), WasmPtr<u8>> = instance
+            .exports
+            .get_typed_function(&store, "CrustPlugin_QueryMetadata")
             .map_err(|e| format!("Failed to get symbol 'CrustPlugin_QueryMetadata': {}", e))?;
-        let _entry_point: TypedFunction<WasmPtr<u8>, i8> = instance.exports.get_typed_function(&store, "CrustPlugin_EntryPoint")
+        let _entry_point: TypedFunction<WasmPtr<u8>, i8> = instance
+            .exports
+            .get_typed_function(&store, "CrustPlugin_EntryPoint")
             .map_err(|e| format!("Failed to get symbol 'CrustPlugin_EntryPoint': {}", e))?;
 
-        let memory = instance.exports.get_memory("memory").map_err(|e| format!("Failed to get memory: {}", e))?;
+        debug!("Querying metadata for plugin: {}", path.display());
+        let metadata_ptr = query_metadata
+            .call(&mut store)
+            .map_err(|e| format!("Failed to call 'CrustPlugin_QueryMetadata': {}", e))?;
+        if metadata_ptr.is_null() {
+            return Err("Plugin rejected metadata query".into());
+        }
+
+
+        //  MemoryView::
+        let memory = instance
+            .exports
+            .get_memory("mem")
+            .map_err(|e| format!("Failed to get memory: {}", e))?;
         if memory.view(&store).size().0 < 1 {
-            memory.grow(&mut store, 1).map_err(|e| format!("Failed to grow memory: {}", e))?;
+            memory
+                .grow(&mut store, 1)
+                .map_err(|e| format!("Failed to grow memory: {}", e))?;
         }
 
         println!("Querying metadata for plugin: {}", path.display());
-        let metadata_ptr = query_metadata.call(&mut store).map_err(|e| format!("Failed to call 'CrustPlugin_QueryMetadata': {}", e))?;
+        let metadata_ptr = query_metadata
+            .call(&mut store)
+            .map_err(|e| format!("Failed to call 'CrustPlugin_QueryMetadata': {}", e))?;
         if metadata_ptr.is_null() {
             return Err("Plugin rejected metadata query".into());
         }
 
         let mem_view = memory.view(&store);
         let start = metadata_ptr.offset() as u64;
-        let metadata_bytes = mem_view.copy_range_to_vec(start..start + std::mem::size_of::<PluginMetadata>() as u64)
+        let metadata_bytes = mem_view
+            .copy_range_to_vec(start..start + std::mem::size_of::<PluginMetadata>() as u64)
             .map_err(|e| format!("Failed to copy metadata bytes: {}", e))?;
         let metadata = unsafe { &*(metadata_bytes.as_ptr() as *const PluginMetadata) };
         let sdk_version = metadata.sdk_version;
@@ -115,9 +161,11 @@ impl PluginManager {
         }
         let start = metadata.manifest.offset() as u64;
         let len = metadata.manifest_len.offset() as u64;
-        let manifest = mem_view.copy_range_to_vec(start..start + len)
+        let manifest = mem_view
+            .copy_range_to_vec(start..start + len)
             .map_err(|e| format!("Failed to copy manifest bytes: {}", e))?;
-        let manifest = std::str::from_utf8(&manifest).map_err(|e| format!("Failed to parse manifest UTF-8 bytes: {}", e))?;
+        let manifest = std::str::from_utf8(&manifest)
+            .map_err(|e| format!("Failed to parse manifest UTF-8 bytes: {}", e))?;
         let manifest = serde_json::from_str::<PluginInfo>(manifest)
             .map_err(|e| format!("Failed to parse manifest JSON: {}", e))?;
 
@@ -125,9 +173,7 @@ impl PluginManager {
         //     return Err(format!("Failed to initialize plugin '{}'", name).into());
         // }
 
-        Ok(Plugin {
-            info: manifest,
-        })
+        Ok(Plugin { info: manifest })
     }
 }
 

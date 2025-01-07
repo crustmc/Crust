@@ -45,8 +45,9 @@ paste = "1.0.15"
 const_format = "0.2.34"
 reqwest = { version = "0.12.9"  }
 rustyline = "15.0.0"
-wasmer = "5.0.4"
-bytemuck = "1.21.0"
+wasmer = { version = "5.0.4" }
+wasmer-wasix = "0.34.0"
+
 
 [target.'cfg(not(target_os = "windows"))'.dependencies]
 flate2 = { version = "1.0.35", features = ["zlib-ng"], default-features = false }
