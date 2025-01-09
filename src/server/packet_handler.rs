@@ -1,5 +1,5 @@
 use std::{future::Future, io::Cursor, pin::Pin, sync::atomic::Ordering};
-
+use log::{error, info};
 use crate::{chat::Text, server::{self, packets::{self, Packet}, ProxyServer}, util::{IOResult, WeakHandle}};
 use crate::server::packets::{ClientCustomPayload, ServerCustomPayload};
 use crate::util::EncodingHelper;
@@ -15,6 +15,12 @@ impl ClientPacketHandler {
         if let Some(packet_type) = PacketRegistry::instance().get_client_packet_type(client_handle.protocol_state(), version, packet_id) { match packet_type {
             ClientPacketType::FinishConfiguration => {
                 client_handle.set_protocol_state(ProtocolState::Game);
+                if let Some(player) = player.upgrade() {
+                    if player.sync_data.is_switching_server.load(Ordering::Relaxed) {
+                        player.sync_data.game_ack_notify.notify_one();
+                        return Ok(false);
+                    }
+                }
             }
             ClientPacketType::ConfigurationAck => {
                 client_handle.set_protocol_state(ProtocolState::Config);
@@ -109,17 +115,22 @@ impl ServerPacketHandler {
             }
             ServerPacketType::Kick => {
                 let kick = Kick::decode(&mut Cursor::new(buffer), version)?;
-                let state = server_handle.protocol_state();
-                if state == ProtocolState::Game {
-                    let chat = SystemChatMessage {
-                        message: kick.text,
-                        pos: 0,
-                    };
-                    let data = packets::get_full_server_packet_buf(&chat, version, state)?;
-                    if let Some(data) = data {
-                        let _ = client_handle.queue_packet(data, false).await;
+                let player = player.upgrade();
+                if let Some(player) = player {
+                    let state = player.client_handle.protocol_state();
+                    drop(player);
+                    if state == ProtocolState::Game {
+                        let chat = SystemChatMessage {
+                            message: kick.text,
+                            pos: 0,
+                        };
+                        let data = packets::get_full_server_packet_buf(&chat, version, state)?;
+                        if let Some(data) = data {
+                            let _ = client_handle.queue_packet(data, false).await;
+                        }
                     }
                 }
+
                 return Ok(false);
             }
             ServerPacketType::Commands => {

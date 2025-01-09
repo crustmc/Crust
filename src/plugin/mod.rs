@@ -109,9 +109,7 @@ impl PluginManager {
         let module = Module::from_file(&store, path)?;
 
         let (instance, wasi_env) = builder.instantiate(module, &mut store)?;
-      //  wasi_env.
-        // todo memory fixing
-        // wasi_env.im
+
         let query_metadata: TypedFunction<(), WasmPtr<u8>> = instance
             .exports
             .get_typed_function(&store, "CrustPlugin_QueryMetadata")
@@ -131,13 +129,9 @@ impl PluginManager {
 
 
         //  MemoryView::
-        let memory = instance
-            .exports
-            .get_memory("mem")
-            .map_err(|e| format!("Failed to get memory: {}", e))?;
+        let memory = wasi_env.env.as_ref(&store).try_memory().unwrap().clone();
         if memory.view(&store).size().0 < 1 {
-            memory
-                .grow(&mut store, 1)
+            memory.grow(&mut store, 1)
                 .map_err(|e| format!("Failed to grow memory: {}", e))?;
         }
 
@@ -169,9 +163,7 @@ impl PluginManager {
         let manifest = serde_json::from_str::<PluginInfo>(manifest)
             .map_err(|e| format!("Failed to parse manifest JSON: {}", e))?;
 
-        // if !entry_point(&API) {
-        //     return Err(format!("Failed to initialize plugin '{}'", name).into());
-        // }
+        error!("{:#?}", manifest);
 
         Ok(Plugin { info: manifest })
     }

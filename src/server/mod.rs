@@ -501,22 +501,22 @@ impl ProxiedPlayer {
             }
             let backend = backend.unwrap();
 
-            if let ProtocolState::Game = player.client_handle.protocol_state() {
-                let _ = player.client_handle.drop_redundant(true).await;
+            { // part where we handle all the network stuff that needs to be synchronized heavy
+                player.client_handle.drop_redundant(true).await.ok();
                 if let Some(ref server_handle) = player.server_handle {
                     server_handle.disconnect("client is switching servers").await;
                     server_handle.wait_for_disconnect().await;
                 }
+                if player.client_handle.protocol_state() == ProtocolState::Config {
+                    player.client_handle.goto_game(version).await.ok();
+                    player.sync_data.game_ack_notify.notified().await;
+                } 
 
-                let _ = player.client_handle.goto_config(version).await;
+                player.client_handle.goto_config(version).await.ok();
                 player.sync_data.config_ack_notify.notified().await;
-
-                let _ = player.client_handle.drop_redundant(false).await;
-            } else {
-                warn!("Player {} is not in game state, cancelling server switch.", username);
-                player.sync_data.is_switching_server.store(false, Ordering::Relaxed);
-                return false;
+                player.client_handle.drop_redundant(false).await.ok();
             }
+
 
             if let Some(read_task) = player.client_handle.read_task.lock().await.take() {
                 read_task.abort();
@@ -532,7 +532,7 @@ impl ProxiedPlayer {
 
             if let Some(packet) = settings.as_ref() {
                 if let Some(data) = packets::get_full_client_packet_buf(packet, version, player.client_handle.protocol_state()).unwrap() {
-                    if let Err(_e) = server_handle.queue_packet(data, true).await {
+                    if let Err(_e) = server_handle.queue_packet(data, false).await {
                         drop(settings);
                         player.sync_data.is_switching_server.store(false, Ordering::Relaxed);
                         return false;

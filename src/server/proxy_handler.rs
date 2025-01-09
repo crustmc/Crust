@@ -1,5 +1,6 @@
 use std::{io::Cursor, net::SocketAddr, ops::DerefMut, sync::{atomic::{AtomicBool, AtomicU8, Ordering}, Arc}, time::SystemTime};
 use std::fmt::Display;
+use log::{error, info, warn};
 use tokio::{net::{tcp::OwnedReadHalf, TcpStream}, sync::{mpsc::Sender, Mutex, Notify, RwLock}, task::AbortHandle};
 
 use crate::{auth::GameProfile, chat::Text, server::{packet_ids::{PacketRegistry, ServerPacketType}, packets::{self, encode_and_send_packet, read_and_decode_packet, Kick}, ProxiedPlayer}, util::{Handle, VarInt, WeakHandle}};
@@ -20,6 +21,7 @@ pub(crate) struct ProxyingData {
 pub(crate) struct PlayerSyncData {
     pub is_switching_server: AtomicBool,
     pub config_ack_notify: Notify,
+    pub game_ack_notify: Notify,
     pub client_settings: Mutex<Option<ClientSettings>>,
     pub brand_packet: Mutex<Option<ClientCustomPayload>>,
 }
@@ -83,11 +85,13 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
         let mut protocol_buf = Vec::new();
         let mut drop_redundant = false;
         let mut in_bundle = false;
+
         while let Some(event) = receiver.recv().await {
             match event {
-                PacketSending::Packet(packet, drop_bypass) => {
-                    if drop_redundant && !drop_bypass {
-                        continue;
+                PacketSending::Packet(packet, bypass) => {
+                    if(drop_redundant && !bypass) {
+                        warn!("DROPPED PACKET!");
+                        break;
                     }
                     let res = encode_and_send_packet(&mut write, &packet, &mut protocol_buf, compression_threshold, &mut encryption).await;
                     if let Err(_e) = res {
@@ -124,12 +128,28 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
                         }
                     }
                 }
+
+                PacketSending::StartGame(version) => {
+                    if in_bundle {
+                        unreachable!("cant be in bundle while in config state")
+                    }
+                    if let Some(packet_id) = PacketRegistry::instance().get_server_packet_id(ProtocolState::Config, version, ServerPacketType::FinishConfiguration) {
+                        if let Err(_e) = encode_and_send_packet(&mut write, &{
+                            let mut packet = vec![];
+                            VarInt(packet_id).encode(&mut packet, 5).unwrap();
+                            packet
+                        }, &mut protocol_buf, compression_threshold, &mut encryption).await {
+                            break;
+                        }
+                    }
+                }
             }
         }
     });
 
     let player_sync_data = PlayerSyncData {
         is_switching_server: AtomicBool::new(false),
+        game_ack_notify: Notify::new(),
         config_ack_notify: Notify::new(),
         client_settings: Mutex::new(None),
         brand_packet: Mutex::new(None),
@@ -247,6 +267,7 @@ pub(crate) enum PacketSending {
     DropRedundant(bool),
     BundleReceived,
     StartConfig(i32),
+    StartGame(i32)
 }
 
 #[derive(Clone)]
@@ -312,8 +333,8 @@ impl ConnectionHandle {
         receiver.await.map_err(|_| IOError::new(std::io::ErrorKind::Other, "Failed to receive sync packet!"))
     }
     
-    pub async fn queue_packet(&self, packet: Vec<u8>, bypass_drop: bool) -> IOResult<()> {
-        self.sender.send(PacketSending::Packet(packet, bypass_drop)).await.map_err(|_| IOError::new(std::io::ErrorKind::Other, "Failed to queue packet!"))
+    pub async fn queue_packet(&self, packet: Vec<u8>, bypass: bool) -> IOResult<()> {
+        self.sender.send(PacketSending::Packet(packet, bypass)).await.map_err(|_| IOError::new(std::io::ErrorKind::Other, "Failed to queue packet!"))
     }
     
     pub async fn drop_redundant(&self, drop: bool) -> IOResult<()> {
@@ -326,6 +347,9 @@ impl ConnectionHandle {
     
     pub async fn goto_config(&self, version: i32) -> IOResult<()> {
         self.sender.send(PacketSending::StartConfig(version)).await.map_err(|_| IOError::new(std::io::ErrorKind::Other, "Failed to queue start config packet!"))
+    }
+    pub async fn goto_game(&self, version: i32) -> IOResult<()> {
+        self.sender.send(PacketSending::StartGame(version)).await.map_err(|_| IOError::new(std::io::ErrorKind::Other, "Failed to queue start config packet!"))
     }
     
     pub async fn disconnect(&self, reason: &str) {

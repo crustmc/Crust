@@ -148,7 +148,7 @@ impl EstablishedBackend {
             let mut protocol_buf = Vec::new();
             while let Some(event) = receiver.recv().await {
                 match event {
-                    PacketSending::Packet(packet, _) => {
+                    PacketSending::Packet(packet, bypass) => {
                         if encode_and_send_packet(
                             &mut write,
                             &packet,
