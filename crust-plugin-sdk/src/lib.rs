@@ -13,7 +13,6 @@ pub struct PluginApi {
 }
 
 impl PluginApi {
-    
     pub fn shutdown_proxy(&self, reason: Option<&str>) -> ! {
         match reason {
             Some(reason) => (self.inner.shutdown_proxy)(reason.as_ptr() as *const u8, reason.len()),

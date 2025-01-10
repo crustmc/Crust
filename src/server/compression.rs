@@ -39,14 +39,20 @@ pub struct SizeLimitedReader<R: Read> {
 
 impl<R: Read> SizeLimitedReader<R> {
     pub fn new(inner: R, limit: usize) -> Self {
-        Self { inner, remaining: limit }
+        Self {
+            inner,
+            remaining: limit,
+        }
     }
 }
 
 impl<R: Read> Read for SizeLimitedReader<R> {
     fn read(&mut self, buf: &mut [u8]) -> IOResult<usize> {
         if self.remaining == 0 {
-            return Err(IOError::new(IOErrorKind::InvalidData, "exceeded length limit")); // Stop reading if limit is reached
+            return Err(IOError::new(
+                IOErrorKind::InvalidData,
+                "exceeded length limit",
+            )); // Stop reading if limit is reached
         }
 
         let max_read = std::cmp::min(self.remaining, buf.len());
@@ -63,14 +69,20 @@ pub struct RefSizeLimitedReader<'a, R: Read + ?Sized> {
 
 impl<'a, R: Read + ?Sized> RefSizeLimitedReader<'a, R> {
     pub fn new(inner: &'a mut R, limit: usize) -> Self {
-        Self { inner, remaining: limit }
+        Self {
+            inner,
+            remaining: limit,
+        }
     }
 }
 
 impl<'a, R: Read + ?Sized> Read for RefSizeLimitedReader<'a, R> {
     fn read(&mut self, buf: &mut [u8]) -> IOResult<usize> {
         if self.remaining == 0 {
-            return Err(IOError::new(IOErrorKind::InvalidData, "exceeded length limit")); // Stop reading if limit is reached
+            return Err(IOError::new(
+                IOErrorKind::InvalidData,
+                "exceeded length limit",
+            )); // Stop reading if limit is reached
         }
 
         let max_read = std::cmp::min(self.remaining, buf.len());

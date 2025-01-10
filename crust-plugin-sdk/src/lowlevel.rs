@@ -20,7 +20,6 @@ unsafe impl<T> Send for PtrWrapper<T> {}
 unsafe impl<T> Sync for PtrWrapper<T> {}
 
 impl<T> PtrWrapper<T> {
-    
     pub const fn new(ptr: *const T) -> Self {
         Self(ptr)
     }
@@ -29,7 +28,8 @@ impl<T> PtrWrapper<T> {
 pub type PlayerHandle = *const c_void;
 
 /// Return `true` to continue enumeration, `false` to stop.
-pub type EnumeratePlayersCallback = extern "C" fn(player: PlayerHandle, user_data: *const c_void) -> bool;
+pub type EnumeratePlayersCallback =
+    extern "C" fn(player: PlayerHandle, user_data: *const c_void) -> bool;
 
 macro_rules! define_plugin_api {
     ($( ($fn_name:ident, $typedef_name:ident, fn ( $($arg_name:ident: $arg_typ:ty),* ) -> $ret_ty:ty ) )*) => {
@@ -54,11 +54,8 @@ define_plugin_api! {
 }
 
 impl LPluginApi {
-
     #[allow(dead_code)]
     pub const fn into_plugin_api(self) -> PluginApi {
-        PluginApi {
-            inner: self,
-        }
+        PluginApi { inner: self }
     }
 }

@@ -25,11 +25,15 @@ use crate::{
 use self::packets::{LoginAcknowledged, LoginDisconnect, SetCompression};
 
 use super::{
-    packet_handler::ServerPacketHandler, packet_ids::{PacketRegistry, ServerPacketType}, packets::{
+    packet_handler::ServerPacketHandler,
+    packet_ids::{PacketRegistry, ServerPacketType},
+    packets::{
         self, encode_and_send_packet, read_and_decode_packet, CookieRequest, CookieResponse,
         EncryptionRequest, Handshake, LoginPluginRequest, LoginPluginResponse, LoginRequest,
         LoginSuccess, PlayerPublicKey, ProtocolState, PROTOCOL_STATE_LOGIN,
-    }, proxy_handler::{ClientHandle, ConnectionHandle, PacketSending}, ProxiedPlayer, ProxyServer, SlotId
+    },
+    proxy_handler::{ClientHandle, ConnectionHandle, PacketSending},
+    ProxiedPlayer, ProxyServer, SlotId,
 };
 
 #[derive(Debug)]
@@ -105,7 +109,8 @@ impl EstablishedBackend {
                     &mut protocol_buf,
                     compression_threshold,
                     &mut decryption,
-                ).await;
+                )
+                .await;
 
                 if let Err(e) = res {
                     self_handle.disconnect(&e.to_string()).await;
@@ -127,7 +132,7 @@ impl EstablishedBackend {
                     &self_handle,
                     &partner.connection,
                 )
-                    .await;
+                .await;
                 if let Err(e) = &res {
                     self_handle.disconnect(&e.to_string()).await;
                     break;
@@ -156,8 +161,8 @@ impl EstablishedBackend {
                             compression_threshold,
                             &mut encryption,
                         )
-                            .await
-                            .is_err()
+                        .await
+                        .is_err()
                         {
                             // could not forward packet to player, he disconnected
                             break;
@@ -221,7 +226,7 @@ impl EstablishedBackend {
                 self.version,
                 handle_.protocol_state(),
             )
-                .unwrap();
+            .unwrap();
             partner_handle.queue_packet(buf, true).await.ok();
             partner_handle.sync().await.ok();
             partner_handle.disconnect("no fallback server found").await;
@@ -233,7 +238,7 @@ impl EstablishedBackend {
 fn switch_server_helper(
     player: WeakHandle<ProxiedPlayer>,
     server: SlotId,
-) -> Pin<Box<dyn Future<Output=bool> + Send>> {
+) -> Pin<Box<dyn Future<Output = bool> + Send>> {
     let block = async move {
         if let Some(player) = player.upgrade() {
             let switched = ProxiedPlayer::switch_server(player, server).await;
@@ -323,7 +328,7 @@ pub async fn connect<A: ToSocketAddrs>(
         version,
         ProtocolState::Handshake,
     )
-        .unwrap();
+    .unwrap();
     encode_and_send_packet(
         &mut stream,
         &write_buf,
@@ -331,8 +336,8 @@ pub async fn connect<A: ToSocketAddrs>(
         compression_threshold,
         &mut encryption,
     )
-        .await
-        .map_err(ConnectError::IO)?;
+    .await
+    .map_err(ConnectError::IO)?;
 
     packets::get_full_client_packet_buf_write_buffer(
         &mut write_buf,
@@ -344,7 +349,7 @@ pub async fn connect<A: ToSocketAddrs>(
         version,
         ProtocolState::Login,
     )
-        .unwrap();
+    .unwrap();
     encode_and_send_packet(
         &mut stream,
         &write_buf,
@@ -352,8 +357,8 @@ pub async fn connect<A: ToSocketAddrs>(
         compression_threshold,
         &mut encryption,
     )
-        .await
-        .map_err(ConnectError::IO)?;
+    .await
+    .map_err(ConnectError::IO)?;
 
     let mut read_buf = Vec::new();
     loop {
@@ -364,8 +369,8 @@ pub async fn connect<A: ToSocketAddrs>(
             compression_threshold,
             &mut decryption,
         )
-            .await
-            .map_err(ConnectError::IO)?;
+        .await
+        .map_err(ConnectError::IO)?;
         let mut reader = Cursor::new(&read_buf);
         let packet_id = VarInt::decode_simple(&mut reader)
             .map_err(ConnectError::IO)?
@@ -422,7 +427,7 @@ pub async fn connect<A: ToSocketAddrs>(
                         version,
                         ProtocolState::Login,
                     )
-                        .unwrap();
+                    .unwrap();
                     encode_and_send_packet(
                         &mut stream,
                         &write_buf,
@@ -430,8 +435,8 @@ pub async fn connect<A: ToSocketAddrs>(
                         compression_threshold,
                         &mut encryption,
                     )
-                        .await
-                        .map_err(ConnectError::IO)?;
+                    .await
+                    .map_err(ConnectError::IO)?;
 
                     encryption = Some(PacketEncryption::new(&secret_key));
                     decryption = Some(PacketDecryption::new(&secret_key));
@@ -447,7 +452,7 @@ pub async fn connect<A: ToSocketAddrs>(
                             version,
                             ProtocolState::Login,
                         )
-                            .unwrap();
+                        .unwrap();
                         encode_and_send_packet(
                             &mut stream,
                             &write_buf,
@@ -455,8 +460,8 @@ pub async fn connect<A: ToSocketAddrs>(
                             compression_threshold,
                             &mut encryption,
                         )
-                            .await
-                            .map_err(ConnectError::IO)?;
+                        .await
+                        .map_err(ConnectError::IO)?;
                     }
                     break;
                 }
@@ -477,7 +482,7 @@ pub async fn connect<A: ToSocketAddrs>(
                         version,
                         ProtocolState::Login,
                     )
-                        .unwrap();
+                    .unwrap();
                     encode_and_send_packet(
                         &mut stream,
                         &write_buf,
@@ -485,8 +490,8 @@ pub async fn connect<A: ToSocketAddrs>(
                         compression_threshold,
                         &mut encryption,
                     )
-                        .await
-                        .map_err(ConnectError::IO)?;
+                    .await
+                    .map_err(ConnectError::IO)?;
                 }
                 ServerPacketType::CookieRequest => {
                     let cookie_request =
@@ -500,7 +505,7 @@ pub async fn connect<A: ToSocketAddrs>(
                         version,
                         ProtocolState::Login,
                     )
-                        .unwrap();
+                    .unwrap();
                     encode_and_send_packet(
                         &mut stream,
                         &write_buf,
@@ -508,8 +513,8 @@ pub async fn connect<A: ToSocketAddrs>(
                         compression_threshold,
                         &mut encryption,
                     )
-                        .await
-                        .map_err(ConnectError::IO)?;
+                    .await
+                    .map_err(ConnectError::IO)?;
                 }
                 _ => {}
             }

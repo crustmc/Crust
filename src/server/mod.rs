@@ -1,4 +1,11 @@
-use std::{collections::HashMap, future::Future, io::Cursor, path::{Path, PathBuf}, sync::atomic::Ordering, time::{Duration, Instant}};
+use crate::util::WeakHandle;
+use crate::{
+    auth::GameProfile,
+    chat::Text,
+    hash_map,
+    plugin::PluginManager,
+    util::{Handle, IOResult},
+};
 use base64::Engine;
 use command::{CommandRegistry, CommandRegistryBuilder};
 use image::{imageops::FilterType, ImageFormat};
@@ -8,22 +15,31 @@ use proxy_handler::{ClientHandle, ConnectionHandle, PlayerSyncData};
 use rsa::{RsaPrivateKey, RsaPublicKey};
 use serde::{Deserialize, Serialize};
 use slotmap::{DefaultKey, SlotMap};
+use std::{
+    collections::HashMap,
+    future::Future,
+    io::Cursor,
+    path::{Path, PathBuf},
+    sync::atomic::Ordering,
+    time::{Duration, Instant},
+};
+use tokio::io::AsyncWriteExt;
+use tokio::time::sleep;
 use tokio::{net::TcpListener, runtime::Runtime, sync::RwLock, task::JoinHandle};
-use crate::{auth::GameProfile, chat::Text, hash_map, plugin::PluginManager, util::{Handle, IOResult}};
-use crate::util::WeakHandle;
+use wasmer_wasix::types::wasi::Clockid::ProcessCputimeId;
 
 pub(crate) mod backend;
 pub(crate) mod brigadier;
+pub(crate) mod command;
 pub(crate) mod compression;
 pub(crate) mod encryption;
 pub(crate) mod initial_handler;
-pub(crate) mod packets;
+pub(crate) mod nbt;
 pub(crate) mod packet_handler;
 pub(crate) mod packet_ids;
+pub(crate) mod packets;
 pub(crate) mod proxy_handler;
 pub(crate) mod status;
-pub(crate) mod command;
-pub(crate) mod nbt;
 
 pub const NAME: &str = "Crust";
 pub const GIT_COMMIT_ID: &str = env!("GIT_COMMIT");
@@ -75,12 +91,10 @@ impl Default for ProxyConfig {
             prevent_proxy_connections: false,
             spigot_forward: true,
             restrict_tab_completes: true,
-            servers: vec![
-                ServerConfig {
-                    label: "lobby".to_owned(),
-                    address: "127.0.0.1:25565".to_owned(),
-                }
-            ],
+            servers: vec![ServerConfig {
+                label: "lobby".to_owned(),
+                address: "127.0.0.1:25565".to_owned(),
+            }],
             priorities: vec!["lobby".to_owned()],
             max_packet_per_second: 2000,
             proxy_protocol: false,
@@ -110,7 +124,7 @@ impl ServerList {
         &self.priorities
     }
 
-    pub fn all_servers(&self) -> impl Iterator<Item=(SlotId, &ServerInfo)> {
+    pub fn all_servers(&self) -> impl Iterator<Item = (SlotId, &ServerInfo)> {
         self.servers.iter()
     }
 
@@ -119,7 +133,9 @@ impl ServerList {
     }
 
     pub fn get_server_by_name(&self, label: &str) -> Option<&ServerInfo> {
-        self.servers_by_name.get(label).map(|id| self.servers.get(*id).unwrap())
+        self.servers_by_name
+            .get(label)
+            .map(|id| self.servers.get(*id).unwrap())
     }
 
     pub fn get_server(&self, id: SlotId) -> Option<&ServerInfo> {
@@ -150,7 +166,7 @@ impl ServerList {
         false
     }
 
-    pub fn list_servers(&self) -> impl Iterator<Item=&ServerInfo> {
+    pub fn list_servers(&self) -> impl Iterator<Item = &ServerInfo> {
         self.servers.values()
     }
 }
@@ -172,26 +188,27 @@ pub struct ProxyServer {
 static mut INSTANCE: Option<ProxyServer> = None;
 
 impl ProxyServer {
-    
     pub fn config(&self) -> &ProxyConfig {
         &self.config
     }
-    
+
     pub fn command_registry(&self) -> &CommandRegistry {
         &self.command_registry
     }
-    
+
     pub fn servers(&self) -> &RwLock<ServerList> {
         &self.servers
     }
-    
+
     pub fn players(&self) -> &RwLock<SlotMap<SlotId, Handle<ProxiedPlayer>>> {
         &self.players
     }
-    
+
     pub async fn get_player_by_name(&self, name: &str) -> Option<WeakHandle<ProxiedPlayer>> {
         let lock = self.players.read().await;
-        let player = lock.iter().find( |(_, player_ref)| player_ref.profile.name.eq_ignore_ascii_case(name));
+        let player = lock
+            .iter()
+            .find(|(_, player_ref)| player_ref.profile.name.eq_ignore_ascii_case(name));
         if let Some((_, player_ref)) = player {
             Some(player_ref.downgrade())
         } else {
@@ -201,31 +218,36 @@ impl ProxyServer {
 
     pub fn get_player_by_name_blocking(&self, name: &str) -> Option<WeakHandle<ProxiedPlayer>> {
         let lock = self.players.blocking_read();
-        let player = lock.iter().find( |(_, player_ref)| player_ref.profile.name.eq_ignore_ascii_case(name));
+        let player = lock
+            .iter()
+            .find(|(_, player_ref)| player_ref.profile.name.eq_ignore_ascii_case(name));
         if let Some((_, player_ref)) = player {
             Some(player_ref.downgrade())
         } else {
             None
         }
     }
-    
+
     pub fn rsa_private_key(&self) -> &RsaPrivateKey {
         &self.rsa_priv_key
     }
-    
+
     pub fn rsa_public_key(&self) -> &RsaPublicKey {
         &self.rsa_pub_key
     }
-    
+
     pub fn runtime(&self) -> &Runtime {
         &self.runtime
     }
-    
+
     pub fn block_on<F: Future<Output = T>, T>(&self, future: F) -> T {
         self.runtime.block_on(future)
     }
-    
-    pub fn spawn_task<F: Future<Output = T> + Send + 'static, T: Send + 'static>(&self, future: F) -> JoinHandle<T> {
+
+    pub fn spawn_task<F: Future<Output = T> + Send + 'static, T: Send + 'static>(
+        &self,
+        future: F,
+    ) -> JoinHandle<T> {
         self.runtime.spawn(future)
     }
 
@@ -236,6 +258,22 @@ impl ProxyServer {
                 None => panic!("ProxyServer instance not initialized"),
             }
         }
+    }
+
+    pub fn shutdown(&self, text: Option<&str>) {
+        let msg = if text.is_some() {
+            Text::new(text.unwrap())
+        } else {
+            Text::new("§cProxy Server shutdown")
+        };
+
+        self.block_on(async move {
+            let block = self.players.read().await;
+            for player in block.values() {
+                player.kick(msg.clone()).await.ok();
+            }
+            std::process::exit(0);
+        });
     }
 }
 
@@ -251,15 +289,13 @@ pub fn run_server() {
         default_config
     } else {
         match std::fs::read("config.json") {
-            Ok(json) => {
-                match serde_json::from_slice(&json) {
-                    Ok(config) => config,
-                    Err(e) => {
-                        log::error!("Failed to parse config: {}", e);
-                        return;
-                    }
+            Ok(json) => match serde_json::from_slice(&json) {
+                Ok(config) => config,
+                Err(e) => {
+                    log::error!("Failed to parse config: {}", e);
+                    return;
                 }
-            }
+            },
             Err(e) => {
                 log::error!("Failed to read config: {}", e);
                 return;
@@ -276,11 +312,14 @@ pub fn run_server() {
                         image = image.resize_exact(64, 64, FilterType::Lanczos3);
                     }
                     let mut png_bytes = Vec::new();
-                    if let Err(e) = image.write_to(&mut Cursor::new(&mut png_bytes), ImageFormat::Png) {
+                    if let Err(e) =
+                        image.write_to(&mut Cursor::new(&mut png_bytes), ImageFormat::Png)
+                    {
                         warn!("Failed to encode favicon: {}", e);
                         None
                     } else {
-                        let base64 = String::from("data:image/png;base64,") + &base64::engine::general_purpose::STANDARD.encode(&png_bytes);
+                        let base64 = String::from("data:image/png;base64,")
+                            + &base64::engine::general_purpose::STANDARD.encode(&png_bytes);
                         Some(base64)
                     }
                 }
@@ -293,8 +332,9 @@ pub fn run_server() {
             log::error!("Favicon path is not a valid file! Skipping icon...");
             None
         }
-    } else { None };
-    
+    } else {
+        None
+    };
 
     info!("Loaded proxy config.");
 
@@ -310,7 +350,10 @@ pub fn run_server() {
         return;
     }
     let runtime = runtime.unwrap();
-    info!("Started runtime with {} worker threads.", runtime.metrics().num_workers());
+    info!(
+        "Started runtime with {} worker threads.",
+        runtime.metrics().num_workers()
+    );
 
     let priv_key = RsaPrivateKey::new(&mut rand::thread_rng(), 1024);
     if let Err(e) = priv_key {
@@ -347,22 +390,25 @@ pub fn run_server() {
             favicon: icon,
         });
     }
-    
+
     ProxyServer::instance().block_on(async move {
         if !PluginManager::load_plugins() {
             log::error!("Error while loading plugins, shutting down.");
             return;
         }
     });
-    
+
     ProxyServer::instance().spawn_task(async move {
-        let listener = TcpListener::bind(&ProxyServer::instance().config.bind_address).await.unwrap();
+        let listener = TcpListener::bind(&ProxyServer::instance().config.bind_address)
+            .await
+            .unwrap();
 
         info!("Listening on {}", listener.local_addr().unwrap());
         let mut map = HashMap::new();
         let mut time = Instant::now();
         let connection_throttle = ProxyServer::instance().config.connection_throttle_time > 0;
-        let interval = Duration::from_millis(ProxyServer::instance().config().connection_throttle_time as u64);
+        let interval =
+            Duration::from_millis(ProxyServer::instance().config().connection_throttle_time as u64);
         let limit = ProxyServer::instance().config().connection_throttle_limit;
         loop {
             match listener.accept().await {
@@ -409,7 +455,6 @@ pub struct ProxiedPlayer {
 }
 
 impl ProxiedPlayer {
-
     pub fn has_permission(&self, perm: &str) -> bool {
         let mut groups = ProxyServer::instance().config.users.get(&self.profile.name);
         if groups.is_none() {
@@ -424,7 +469,10 @@ impl ProxiedPlayer {
                         return true;
                     }
                 } else {
-                    error!("Group {} is not configured, but used by {}", group, &self.profile.name);
+                    error!(
+                        "Group {} is not configured, but used by {}",
+                        group, &self.profile.name
+                    );
                 }
             }
         }
@@ -439,11 +487,12 @@ impl ProxiedPlayer {
     }
 
     pub async fn send_message(&self, message: Text) -> IOResult<()> {
-        let chat = SystemChatMessage {
-            message,
-            pos: 0,
-        };
-        let data = packets::get_full_server_packet_buf(&chat, self.protocol_version, self.client_handle.protocol_state())?;
+        let chat = SystemChatMessage { message, pos: 0 };
+        let data = packets::get_full_server_packet_buf(
+            &chat,
+            self.protocol_version,
+            self.client_handle.protocol_state(),
+        )?;
         if let Some(data) = data {
             return self.client_handle.queue_packet(data, false).await;
         } else {
@@ -451,10 +500,14 @@ impl ProxiedPlayer {
         }
         Ok(())
     }
-    
+
     pub async fn kick<T: Into<Text>>(&self, text: T) -> IOResult<()> {
         let kick_packet = packets::Kick { text: text.into() };
-        let data = packets::get_full_server_packet_buf(&kick_packet, self.protocol_version, self.client_handle.protocol_state())?;
+        let data = packets::get_full_server_packet_buf(
+            &kick_packet,
+            self.protocol_version,
+            self.client_handle.protocol_state(),
+        )?;
         if let Some(data) = data {
             self.client_handle.queue_packet(data, true).await?;
             self.client_handle.sync().await?;
@@ -463,12 +516,20 @@ impl ProxiedPlayer {
         Ok(())
     }
 
-    pub async fn switch_server(mut player: Handle<ProxiedPlayer>, server_id: SlotId) -> Option<JoinHandle<bool>> {
+    pub async fn switch_server(
+        mut player: Handle<ProxiedPlayer>,
+        server_id: SlotId,
+    ) -> Option<JoinHandle<bool>> {
         if player.client_handle.closed.load(Ordering::Relaxed) {
             return None;
         }
 
-        if let Err(true) = player.sync_data.is_switching_server.compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed) {
+        if let Err(true) = player.sync_data.is_switching_server.compare_exchange(
+            false,
+            true,
+            Ordering::Relaxed,
+            Ordering::Relaxed,
+        ) {
             return None;
         }
         let version = player.protocol_version;
@@ -476,12 +537,15 @@ impl ProxiedPlayer {
             if player.client_handle.closed.load(Ordering::Relaxed) {
                 return false;
             }
-            
+
             let (addr, server_name) = {
                 let server_list = ProxyServer::instance().servers().read().await;
                 let server = server_list.get_server(server_id);
                 if server.is_none() {
-                    player.sync_data.is_switching_server.store(false, Ordering::Relaxed);
+                    player
+                        .sync_data
+                        .is_switching_server
+                        .store(false, Ordering::Relaxed);
                     return false;
                 }
                 let server = server.unwrap();
@@ -490,51 +554,78 @@ impl ProxiedPlayer {
 
             let username = player.profile.name.clone();
             let backend = backend::connect(
-                player.client_handle.address, addr, "127.0.0.1".to_string(), 25565,
-                player.profile.clone(), player.player_public_key.clone(), version
-            ).await;
+                player.client_handle.address,
+                addr,
+                "127.0.0.1".to_string(),
+                25565,
+                player.profile.clone(),
+                player.player_public_key.clone(),
+                version,
+            )
+            .await;
             if let Err(e) = backend {
                 log::error!("[{}] Failed to connect to backend: {}", username, e);
-                player.sync_data.is_switching_server.store(false, Ordering::Relaxed);
-                let _ = player.send_message(Text::new(format!("§cCould not connect: {}", e))).await;
+                player
+                    .sync_data
+                    .is_switching_server
+                    .store(false, Ordering::Relaxed);
+                let _ = player
+                    .send_message(Text::new(format!("§cCould not connect: {}", e)))
+                    .await;
                 return false;
             }
             let backend = backend.unwrap();
 
-            { // part where we handle all the network stuff that needs to be synchronized heavy
+            {
+                // part where we handle all the network stuff that needs to be synchronized heavy
                 player.client_handle.drop_redundant(true).await.ok();
                 if let Some(ref server_handle) = player.server_handle {
-                    server_handle.disconnect("client is switching servers").await;
+                    server_handle
+                        .disconnect("client is switching servers")
+                        .await;
                     server_handle.wait_for_disconnect().await;
                 }
                 if player.client_handle.protocol_state() == ProtocolState::Config {
                     player.client_handle.goto_game(version).await.ok();
                     player.sync_data.game_ack_notify.notified().await;
-                } 
+                }
 
                 player.client_handle.goto_config(version).await.ok();
                 player.sync_data.config_ack_notify.notified().await;
                 player.client_handle.drop_redundant(false).await.ok();
             }
 
-
             if let Some(read_task) = player.client_handle.read_task.lock().await.take() {
                 read_task.abort();
             }
 
-            let (profile, server_handle) = backend.begin_proxying(&server_name, ClientHandle {
-                player: player.downgrade(),
-                version,
-                connection: player.client_handle.clone(),
-            }).await;
+            let (profile, server_handle) = backend
+                .begin_proxying(
+                    &server_name,
+                    ClientHandle {
+                        player: player.downgrade(),
+                        version,
+                        connection: player.client_handle.clone(),
+                    },
+                )
+                .await;
 
             let settings = player.sync_data.client_settings.lock().await;
 
             if let Some(packet) = settings.as_ref() {
-                if let Some(data) = packets::get_full_client_packet_buf(packet, version, player.client_handle.protocol_state()).unwrap() {
+                if let Some(data) = packets::get_full_client_packet_buf(
+                    packet,
+                    version,
+                    player.client_handle.protocol_state(),
+                )
+                .unwrap()
+                {
                     if let Err(_e) = server_handle.queue_packet(data, false).await {
                         drop(settings);
-                        player.sync_data.is_switching_server.store(false, Ordering::Relaxed);
+                        player
+                            .sync_data
+                            .is_switching_server
+                            .store(false, Ordering::Relaxed);
                         return false;
                     }
                 }
@@ -543,12 +634,24 @@ impl ProxiedPlayer {
 
             let display_name = format!("[{} - {}]", username, server_name);
 
-            player.client_handle.spawn_read_task(false, display_name, server_handle.clone(), player.downgrade(), version).await;
+            player
+                .client_handle
+                .spawn_read_task(
+                    false,
+                    display_name,
+                    server_handle.clone(),
+                    player.downgrade(),
+                    version,
+                )
+                .await;
 
             player.current_server = server_id;
             player.server_handle = Some(server_handle);
             player.profile = profile;
-            player.sync_data.is_switching_server.store(false, Ordering::Relaxed);
+            player
+                .sync_data
+                .is_switching_server
+                .store(false, Ordering::Relaxed);
             true
         });
         Some(join_handle)

@@ -6,14 +6,14 @@ version = 3
 name = "crust-example-plugin"
 version = "0.1.0"
 dependencies = [
- "crust-plugin-sdk",
+    "crust-plugin-sdk",
 ]
 
 [[package]]
 name = "crust-plugin-sdk"
 version = "0.1.0"
 dependencies = [
- "paste",
+    "paste",
 ]
 
 [[package]]

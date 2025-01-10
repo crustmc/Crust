@@ -1,6 +1,9 @@
 #![allow(dead_code)]
 
-use std::{io::{Cursor, ErrorKind, Read, Write}, time::Duration};
+use std::{
+    io::{Cursor, ErrorKind, Read, Write},
+    time::Duration,
+};
 
 use byteorder::{ReadBytesExt, WriteBytesExt, BE};
 use either::Either;
@@ -8,9 +11,22 @@ use serde_json::Value;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use uuid::Uuid;
 
-use crate::{auth::{GameProfile, Property}, chat::Text, server::nbt, util::{EncodingHelper, IOError, IOErrorKind, IOResult, VarInt}, version::*};
+use crate::{
+    auth::{GameProfile, Property},
+    chat::Text,
+    server::nbt,
+    util::{EncodingHelper, IOError, IOErrorKind, IOResult, VarInt},
+    version::*,
+};
 
-use super::{brigadier::Suggestions, compression::RefSizeLimitedReader, encryption::{PacketDecryption, PacketEncryption}, nbt::NbtType, packet_ids::{ClientPacketType, PacketRegistry, ServerPacketType}, ProxyServer};
+use super::{
+    brigadier::Suggestions,
+    compression::RefSizeLimitedReader,
+    encryption::{PacketDecryption, PacketEncryption},
+    nbt::NbtType,
+    packet_ids::{ClientPacketType, PacketRegistry, ServerPacketType},
+    ProxyServer,
+};
 
 pub const PROTOCOL_READ_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -42,49 +58,94 @@ pub trait Packet {
     fn encode<W: Write + ?Sized>(&self, dst: &mut W, version: i32) -> IOResult<()>;
 }
 
-pub fn get_full_server_packet_buf<P: Packet + ServerPacket>(packet: &P, version: i32, protocol: ProtocolState) -> IOResult<Option<Vec<u8>>> {
-    if let Some(packet_id) = PacketRegistry::instance().get_server_packet_id(protocol, version, packet.get_type()) {
+pub fn get_full_server_packet_buf<P: Packet + ServerPacket>(
+    packet: &P,
+    version: i32,
+    protocol: ProtocolState,
+) -> IOResult<Option<Vec<u8>>> {
+    if let Some(packet_id) =
+        PacketRegistry::instance().get_server_packet_id(protocol, version, packet.get_type())
+    {
         let mut data = Vec::new();
         VarInt(packet_id).encode_simple(&mut data)?;
         packet.encode(&mut data, version)?;
         return Ok(Some(data));
     }
-    panic!("packet not found: {:#?}, version: {:#?}, protocol: {:#?}", packet.get_type(), version, protocol);
+    panic!(
+        "packet not found: {:#?}, version: {:#?}, protocol: {:#?}",
+        packet.get_type(),
+        version,
+        protocol
+    );
     //Ok(None)
 }
-pub fn get_full_server_packet_buf_write_buffer<P: Packet + ServerPacket>(buffer: &mut Vec<u8>, packet: &P, version: i32, protocol: ProtocolState) -> IOResult<bool> {
-    if let Some(packet_id) = PacketRegistry::instance().get_server_packet_id(protocol, version, packet.get_type()) {
+pub fn get_full_server_packet_buf_write_buffer<P: Packet + ServerPacket>(
+    buffer: &mut Vec<u8>,
+    packet: &P,
+    version: i32,
+    protocol: ProtocolState,
+) -> IOResult<bool> {
+    if let Some(packet_id) =
+        PacketRegistry::instance().get_server_packet_id(protocol, version, packet.get_type())
+    {
         buffer.clear();
         VarInt(packet_id).encode_simple(buffer)?;
         packet.encode(buffer, version)?;
         return Ok(true);
     }
-    panic!("packet not found: {:#?}, version: {:#?}, protocol: {:#?}", packet.get_type(), version, protocol);
+    panic!(
+        "packet not found: {:#?}, version: {:#?}, protocol: {:#?}",
+        packet.get_type(),
+        version,
+        protocol
+    );
     //Ok(false)
 }
 
-pub fn get_full_client_packet_buf<P: Packet + ClientPacket>(packet: &P, version: i32, protocol: ProtocolState) -> IOResult<Option<Vec<u8>>> {
-    if let Some(packet_id) = PacketRegistry::instance().get_client_packet_id(protocol, version, packet.get_type()) {
+pub fn get_full_client_packet_buf<P: Packet + ClientPacket>(
+    packet: &P,
+    version: i32,
+    protocol: ProtocolState,
+) -> IOResult<Option<Vec<u8>>> {
+    if let Some(packet_id) =
+        PacketRegistry::instance().get_client_packet_id(protocol, version, packet.get_type())
+    {
         let mut data = Vec::new();
         VarInt(packet_id).encode_simple(&mut data)?;
         packet.encode(&mut data, version)?;
         return Ok(Some(data));
     }
-    panic!("packet not found: {:#?}, version: {:#?}, protocol: {:#?}", packet.get_type(), version, protocol);
+    panic!(
+        "packet not found: {:#?}, version: {:#?}, protocol: {:#?}",
+        packet.get_type(),
+        version,
+        protocol
+    );
     //Ok(None)
 }
 
-pub fn get_full_client_packet_buf_write_buffer<P: Packet + ClientPacket>(buffer: &mut Vec<u8>, packet: &P, version: i32, protocol: ProtocolState) -> IOResult<bool> {
-    if let Some(packet_id) = PacketRegistry::instance().get_client_packet_id(protocol, version, packet.get_type()) {
+pub fn get_full_client_packet_buf_write_buffer<P: Packet + ClientPacket>(
+    buffer: &mut Vec<u8>,
+    packet: &P,
+    version: i32,
+    protocol: ProtocolState,
+) -> IOResult<bool> {
+    if let Some(packet_id) =
+        PacketRegistry::instance().get_client_packet_id(protocol, version, packet.get_type())
+    {
         buffer.clear();
         VarInt(packet_id).encode_simple(buffer)?;
         packet.encode(buffer, version)?;
         return Ok(true);
     }
-    panic!("packet not found: {:#?}, version: {:#?}, protocol: {:#?}", packet.get_type(), version, protocol);
+    panic!(
+        "packet not found: {:#?}, version: {:#?}, protocol: {:#?}",
+        packet.get_type(),
+        version,
+        protocol
+    );
     //Ok(false)
 }
-
 
 #[derive(Debug)]
 pub struct Handshake {
@@ -139,10 +200,9 @@ impl Packet for LoginDisconnect {
     {
         let string = EncodingHelper::read_string(src, i16::MAX as usize)?;
         let value: Value = serde_json::from_str(&string)?;
-        let text = crate::chat::deserialize_json(&value).map_err(|err| IOError::new(IOErrorKind::InvalidData, err))?;
-        Ok(Self {
-            text
-        })
+        let text = crate::chat::deserialize_json(&value)
+            .map_err(|err| IOError::new(IOErrorKind::InvalidData, err))?;
+        Ok(Self { text })
     }
 
     fn encode<W: Write + ?Sized>(&self, dst: &mut W, _: i32) -> IOResult<()> {
@@ -152,7 +212,6 @@ impl Packet for LoginDisconnect {
         Ok(())
     }
 }
-
 
 pub struct Kick {
     pub text: Text,
@@ -174,10 +233,9 @@ impl Packet for Kick {
             if let Some(nbt_tag) = nbt.left() {
                 if let Some(nbt_tag) = nbt_tag {
                     let json = nbt_tag.to_json();
-                    let text = crate::chat::deserialize_json(&json).map_err(|err| IOError::new(ErrorKind::InvalidData, err))?;
-                    Ok(Self {
-                        text
-                    })
+                    let text = crate::chat::deserialize_json(&json)
+                        .map_err(|err| IOError::new(ErrorKind::InvalidData, err))?;
+                    Ok(Self { text })
                 } else {
                     Err(IOError::new(ErrorKind::InvalidData, "invalid nbt type"))
                 }
@@ -187,10 +245,9 @@ impl Packet for Kick {
         } else {
             let string = EncodingHelper::read_string(src, i16::MAX as usize)?;
             let value: Value = serde_json::from_str(&string)?;
-            let text = crate::chat::deserialize_json(&value).map_err(|err| IOError::new(IOErrorKind::InvalidData, err))?;
-            Ok(Self {
-                text
-            })
+            let text = crate::chat::deserialize_json(&value)
+                .map_err(|err| IOError::new(IOErrorKind::InvalidData, err))?;
+            Ok(Self { text })
         }
     }
 
@@ -208,7 +265,6 @@ impl Packet for Kick {
     }
 }
 
-
 pub struct SetCompression {
     pub compression: i32,
 }
@@ -225,7 +281,7 @@ impl Packet for SetCompression {
         Self: Sized,
     {
         Ok(Self {
-            compression: VarInt::decode_simple(src)?.get()
+            compression: VarInt::decode_simple(src)?.get(),
         })
     }
 
@@ -234,7 +290,6 @@ impl Packet for SetCompression {
         Ok(())
     }
 }
-
 
 pub struct LoginAcknowledged;
 
@@ -289,7 +344,11 @@ impl Packet for LoginRequest {
         } else {
             None
         };
-        Ok(Self { name, public_key, uuid })
+        Ok(Self {
+            name,
+            public_key,
+            uuid,
+        })
     }
 
     fn encode<W: Write + ?Sized>(&self, dst: &mut W, version: i32) -> IOResult<()> {
@@ -366,9 +425,16 @@ impl Packet for EncryptionRequest {
         let verify_token = EncodingHelper::read_byte_array(src, 256)?;
         let should_authenticate = if version >= R1_20_5 {
             src.read_u8()? != 0
-        } else { true };
+        } else {
+            true
+        };
 
-        Ok(Self { server_id, public_key, verify_token, should_authenticate })
+        Ok(Self {
+            server_id,
+            public_key,
+            verify_token,
+            should_authenticate,
+        })
     }
 
     fn encode<W: Write + ?Sized>(&self, dst: &mut W, version: i32) -> IOResult<()> {
@@ -463,7 +529,8 @@ impl Packet for LoginSuccess {
             EncodingHelper::read_uuid(src)?.to_string()
         } else {
             let id = EncodingHelper::read_string(src, 36)?;
-            Uuid::parse_str(&id).map_err(|_| IOError::new(IOErrorKind::InvalidData, "Failed to parse UUID"))?;
+            Uuid::parse_str(&id)
+                .map_err(|_| IOError::new(IOErrorKind::InvalidData, "Failed to parse UUID"))?;
             id
         };
         let name = EncodingHelper::read_string(src, 16)?;
@@ -478,7 +545,11 @@ impl Packet for LoginSuccess {
                 } else {
                     None
                 };
-                properties.push(Property { name, value, signature });
+                properties.push(Property {
+                    name,
+                    value,
+                    signature,
+                });
             }
         }
         if version >= R1_20_5 && version < R1_21_2 {
@@ -486,14 +557,21 @@ impl Packet for LoginSuccess {
         }
 
         Ok(Self {
-            profile: GameProfile { id, name, properties },
+            profile: GameProfile {
+                id,
+                name,
+                properties,
+            },
         })
     }
 
     fn encode<W: Write + ?Sized>(&self, dst: &mut W, version: i32) -> IOResult<()> {
         if version >= R1_16 {
-            EncodingHelper::write_uuid(dst, &Uuid::parse_str(&self.profile.id)
-                .map_err(|_| IOError::new(IOErrorKind::InvalidData, "Failed to parse UUID"))?)?; // uuid
+            EncodingHelper::write_uuid(
+                dst,
+                &Uuid::parse_str(&self.profile.id)
+                    .map_err(|_| IOError::new(IOErrorKind::InvalidData, "Failed to parse UUID"))?,
+            )?; // uuid
         } else {
             EncodingHelper::write_string(dst, &self.profile.id)?; // uuid
         }
@@ -527,7 +605,11 @@ impl ClientCustomPayload {
         String::from_utf8_lossy(&self.data).into_owned()
     }
     pub fn data_to_hex(&self) -> String {
-        self.data.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join("")
+        self.data
+            .iter()
+            .map(|b| format!("{:02x}", b))
+            .collect::<Vec<_>>()
+            .join("")
     }
 }
 
@@ -542,10 +624,17 @@ impl Packet for ClientCustomPayload {
     where
         Self: Sized,
     {
-        let channel = EncodingHelper::read_string(src, if version >= R1_13 { u16::MAX as usize } else { 20 })?;
+        let channel = EncodingHelper::read_string(
+            src,
+            if version >= R1_13 {
+                u16::MAX as usize
+            } else {
+                20
+            },
+        )?;
         let mut data = Vec::new();
         src.read_to_end(&mut data)?;
-        if data.len()  > u16::MAX as usize {
+        if data.len() > u16::MAX as usize {
             Err(IOError::new(IOErrorKind::InvalidData, "Payload too large"))?
         }
         Ok(Self { channel, data })
@@ -569,7 +658,11 @@ impl ServerCustomPayload {
         String::from_utf8_lossy(&self.data).into_owned()
     }
     pub fn data_to_hex(&self) -> String {
-        self.data.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join("")
+        self.data
+            .iter()
+            .map(|b| format!("{:02x}", b))
+            .collect::<Vec<_>>()
+            .join("")
     }
 }
 
@@ -580,15 +673,21 @@ impl ServerPacket for ServerCustomPayload {
 }
 
 impl Packet for ServerCustomPayload {
-    
     fn decode<R: Read + ?Sized>(src: &mut R, version: i32) -> IOResult<Self>
     where
         Self: Sized,
     {
-        let channel = EncodingHelper::read_string(src, if version >= R1_13 { u16::MAX as usize } else { 20 })?;
+        let channel = EncodingHelper::read_string(
+            src,
+            if version >= R1_13 {
+                u16::MAX as usize
+            } else {
+                20
+            },
+        )?;
         let mut data = Vec::new();
         src.read_to_end(&mut data)?;
-        if data.len()  > 0x100000 {
+        if data.len() > 0x100000 {
             Err(IOError::new(IOErrorKind::InvalidData, "Payload too large"))?
         }
         Ok(Self { channel, data })
@@ -599,7 +698,6 @@ impl Packet for ServerCustomPayload {
         dst.write_all(&self.data)?;
         Ok(())
     }
-    
 }
 
 pub struct LoginPluginRequest {
@@ -693,7 +791,9 @@ impl Packet for CookieRequest {
     where
         Self: Sized,
     {
-        Ok(Self { cookie: EncodingHelper::read_string(src, 32767)? })
+        Ok(Self {
+            cookie: EncodingHelper::read_string(src, 32767)?,
+        })
     }
 
     fn encode<W: Write + ?Sized>(&self, dst: &mut W, _: i32) -> IOResult<()> {
@@ -739,7 +839,6 @@ impl Packet for CookieResponse {
     }
 }
 
-
 pub struct ClientSettings {
     pub local: String,
     pub view_distance: i8,
@@ -751,7 +850,6 @@ pub struct ClientSettings {
     pub allow_server_listing: bool,
     pub particel_status: i32,
 }
-
 
 impl ClientPacket for ClientSettings {
     fn get_type(&self) -> ClientPacketType {
@@ -847,7 +945,7 @@ impl Packet for UnsignedClientCommand {
         Self: Sized,
     {
         Ok(UnsignedClientCommand {
-            message: EncodingHelper::read_string(src, i16::MAX as usize)?
+            message: EncodingHelper::read_string(src, i16::MAX as usize)?,
         })
     }
 
@@ -877,16 +975,18 @@ impl Packet for SystemChatMessage {
         if let Some(nbt_tag) = nbt.left() {
             if let Some(nbt_tag) = nbt_tag {
                 let json = nbt_tag.to_json();
-                let text = crate::chat::deserialize_json(&json).map_err(|err| IOError::new(ErrorKind::InvalidData, err))?;
+                let text = crate::chat::deserialize_json(&json)
+                    .map_err(|err| IOError::new(ErrorKind::InvalidData, err))?;
                 let pos = if version >= R1_19_1 {
-                    if src.read_u8()? != 0 { 2 } else { 0 }
+                    if src.read_u8()? != 0 {
+                        2
+                    } else {
+                        0
+                    }
                 } else {
                     VarInt::decode(src, 5)?.get()
                 };
-                Ok(Self {
-                    message: text,
-                    pos,
-                })
+                Ok(Self { message: text, pos })
             } else {
                 Err(IOError::new(ErrorKind::InvalidData, "invalid nbt type"))
             }
@@ -923,12 +1023,25 @@ impl ClientPacket for TabCompleteRequest {
 }
 
 impl Packet for TabCompleteRequest {
-
     fn decode<R: Read + ?Sized>(src: &mut R, version: i32) -> IOResult<Self>
-        where
-            Self: Sized {
-        let transaction_id = if version >= R1_13 { Some(VarInt::decode(src, 5)?.get()) } else { None };
-        let cursor = EncodingHelper::read_string(src, if version > R1_13 { 32500 } else if version == R1_13 { 256 } else { 32767 })?;
+    where
+        Self: Sized,
+    {
+        let transaction_id = if version >= R1_13 {
+            Some(VarInt::decode(src, 5)?.get())
+        } else {
+            None
+        };
+        let cursor = EncodingHelper::read_string(
+            src,
+            if version > R1_13 {
+                32500
+            } else if version == R1_13 {
+                256
+            } else {
+                32767
+            },
+        )?;
         let mut assume_command = None;
         let mut position = None;
         if version < R1_13 {
@@ -941,7 +1054,10 @@ impl Packet for TabCompleteRequest {
         }
 
         if ProxyServer::instance().config.restrict_tab_completes && cursor.len() > 256 {
-            return Err(IOError::new(ErrorKind::InvalidData, "tab completes can only be up to 256 chars"));
+            return Err(IOError::new(
+                ErrorKind::InvalidData,
+                "tab completes can only be up to 256 chars",
+            ));
         }
 
         Ok(Self {
@@ -985,14 +1101,14 @@ impl ServerPacket for TabCompleteResponse {
 }
 
 impl Packet for TabCompleteResponse {
-
     fn decode<R: Read + ?Sized>(src: &mut R, version: i32) -> IOResult<Self>
-        where
-            Self: Sized {
+    where
+        Self: Sized,
+    {
         let mut transaction_id = None;
         let mut suggestions = None;
         let mut commands = None;
-        if version >= R1_13 {   
+        if version >= R1_13 {
             transaction_id = Some(VarInt::decode_simple(src)?.get());
             suggestions = Some(Suggestions::decode(src, version)?);
         } else {
@@ -1024,12 +1140,19 @@ impl Packet for TabCompleteResponse {
     }
 }
 
-pub async fn read_and_decode_packet<R: AsyncRead + Unpin + ?Sized>(src: &mut R, dest_buf: &mut Vec<u8>, temp_buf: &mut Vec<u8>, compression: i32, decryption: &mut Option<PacketDecryption>) -> IOResult<()> {
+pub async fn read_and_decode_packet<R: AsyncRead + Unpin + ?Sized>(
+    src: &mut R,
+    dest_buf: &mut Vec<u8>,
+    temp_buf: &mut Vec<u8>,
+    compression: i32,
+    decryption: &mut Option<PacketDecryption>,
+) -> IOResult<()> {
     tokio::time::timeout(PROTOCOL_READ_TIMEOUT, async move {
         let size = match decryption {
             Some(decrypt) => VarInt::decode_encrypted_async(src, 3, decrypt).await,
             None => VarInt::decode_async(src, 3).await,
-        }?.get() as usize;
+        }?
+        .get() as usize;
 
         temp_buf.clear();
         dest_buf.clear();
@@ -1055,12 +1178,18 @@ pub async fn read_and_decode_packet<R: AsyncRead + Unpin + ?Sized>(src: &mut R, 
         temp_buf.clear();
 
         Ok::<_, IOError>(())
-    }).await??;
+    })
+    .await??;
     Ok(())
 }
 
-pub async fn encode_and_send_packet<W: AsyncWrite + Unpin + ?Sized>(dst: &mut W, write_buf: &[u8], temp_buf: &mut Vec<u8>,
-                                                                    compression: i32, encryption: &mut Option<PacketEncryption>) -> IOResult<()> {
+pub async fn encode_and_send_packet<W: AsyncWrite + Unpin + ?Sized>(
+    dst: &mut W,
+    write_buf: &[u8],
+    temp_buf: &mut Vec<u8>,
+    compression: i32,
+    encryption: &mut Option<PacketEncryption>,
+) -> IOResult<()> {
     temp_buf.clear();
     if compression >= 0 {
         super::compression::compress(write_buf, compression, temp_buf)?;

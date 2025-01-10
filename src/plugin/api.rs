@@ -7,15 +7,36 @@ pub fn cast_value<'a, T>(view: &MemoryView<'a>, ptr: &WPtr<T>) -> &'a T {
 }
 
 pub fn cast_value_mut<'a, T>(view: &MemoryView<'a>, ptr: &WPtr<T>) -> &'a mut T {
-    unsafe { &mut *(view.data_unchecked_mut().as_ptr().add(ptr.offset() as usize) as *mut T) }
+    unsafe {
+        &mut *(view
+            .data_unchecked_mut()
+            .as_ptr()
+            .add(ptr.offset() as usize) as *mut T)
+    }
 }
 
 pub fn cast_value_array<'a, T>(view: &MemoryView<'a>, ptr: &WPtr<T>, len: usize) -> &'a [T] {
-    unsafe { std::slice::from_raw_parts(view.data_unchecked().as_ptr().add(ptr.offset() as usize) as *const T, len) }
+    unsafe {
+        std::slice::from_raw_parts(
+            view.data_unchecked().as_ptr().add(ptr.offset() as usize) as *const T,
+            len,
+        )
+    }
 }
 
-pub fn cast_value_array_mut<'a, T>(view: &MemoryView<'a>, ptr: &WPtr<T>, len: usize) -> &'a mut [T] {
-    unsafe { std::slice::from_raw_parts_mut(view.data_unchecked_mut().as_ptr().add(ptr.offset() as usize) as *mut T, len) }
+pub fn cast_value_array_mut<'a, T>(
+    view: &MemoryView<'a>,
+    ptr: &WPtr<T>,
+    len: usize,
+) -> &'a mut [T] {
+    unsafe {
+        std::slice::from_raw_parts_mut(
+            view.data_unchecked_mut()
+                .as_ptr()
+                .add(ptr.offset() as usize) as *mut T,
+            len,
+        )
+    }
 }
 
 pub fn cast_str<'a>(view: &MemoryView<'a>, ptr: &WPtr<u8>, len: &WPtr<()>) -> &'a str {
@@ -34,7 +55,6 @@ pub struct PluginMetadata {
 }
 
 impl PluginMetadata {
-    
     pub fn get_manifest<'a>(&self, view: &MemoryView<'a>) -> &'a str {
         cast_str(view, &self.manifest, &self.manifest_len)
     }

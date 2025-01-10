@@ -2,7 +2,10 @@ use std::net::IpAddr;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{server::ProxyServer, util::{IOError, IOErrorKind, IOResult}};
+use crate::{
+    server::ProxyServer,
+    util::{IOError, IOErrorKind, IOResult},
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GameProfile {
@@ -28,7 +31,12 @@ pub struct Property {
     pub signature: Option<String>,
 }
 
-pub async fn has_joined(name: &str, server_id: &str, secret_key: &[u8; 16], ip: Option<IpAddr>) -> IOResult<Option<GameProfile>> {
+pub async fn has_joined(
+    name: &str,
+    server_id: &str,
+    secret_key: &[u8; 16],
+    ip: Option<IpAddr>,
+) -> IOResult<Option<GameProfile>> {
     let name = urlencoding::encode(name);
     let server_id = server_hash(server_id, secret_key);
     let server_id = urlencoding::encode(&server_id);
@@ -37,14 +45,26 @@ pub async fn has_joined(name: &str, server_id: &str, secret_key: &[u8; 16], ip: 
         Some(ip) => format!("https://sessionserver.mojang.com/session/minecraft/hasJoined?username={}&serverId={}&ip={}", name, server_id, ip),
         None => format!("https://sessionserver.mojang.com/session/minecraft/hasJoined?username={}&serverId={}", name, server_id),
     };
-    let response = reqwest::get(url).await
-        .map_err(|e| IOError::new(IOErrorKind::Other, format!("Failed to send HTTP request: {}", e)))?;
+    let response = reqwest::get(url).await.map_err(|e| {
+        IOError::new(
+            IOErrorKind::Other,
+            format!("Failed to send HTTP request: {}", e),
+        )
+    })?;
 
     if response.status().is_success() {
-        let profile = response.bytes().await
-            .map_err(|e| IOError::new(IOErrorKind::Other, format!("Failed to read response body: {}", e)))?;
-        let profile = serde_json::from_slice(&profile)
-            .map_err(|e| IOError::new(IOErrorKind::Other, format!("Failed to parse response body: {}", e)))?;
+        let profile = response.bytes().await.map_err(|e| {
+            IOError::new(
+                IOErrorKind::Other,
+                format!("Failed to read response body: {}", e),
+            )
+        })?;
+        let profile = serde_json::from_slice(&profile).map_err(|e| {
+            IOError::new(
+                IOErrorKind::Other,
+                format!("Failed to parse response body: {}", e),
+            )
+        })?;
         return Ok(Some(profile));
     }
     Ok(None)
@@ -56,7 +76,12 @@ fn server_hash(server_id: &str, secret_key: &[u8; 16]) -> String {
     let mut hasher = sha1::Sha1::new();
     hasher.update(server_id.as_bytes());
     hasher.update(secret_key);
-    hasher.update(ProxyServer::instance().rsa_public_key().to_public_key_der().unwrap());
+    hasher.update(
+        ProxyServer::instance()
+            .rsa_public_key()
+            .to_public_key_der()
+            .unwrap(),
+    );
 
     let hash = hasher.finalize();
     let hash_bigint = num_bigint::BigInt::from_signed_bytes_be(&hash);

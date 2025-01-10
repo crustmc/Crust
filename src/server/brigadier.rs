@@ -3,9 +3,16 @@ use lazy_static::lazy_static;
 
 use std::io::{Read, Write};
 
-use crate::{chat::Text, util::{EncodingHelper, IOError, IOErrorKind, IOResult, VarInt}, version::*};
+use crate::{
+    chat::Text,
+    util::{EncodingHelper, IOError, IOErrorKind, IOResult, VarInt},
+    version::*,
+};
 
-use super::{packet_ids::ServerPacketType, packets::{Packet, ServerPacket}};
+use super::{
+    packet_ids::ServerPacketType,
+    packets::{Packet, ServerPacket},
+};
 
 #[derive(Debug, Clone)]
 pub struct Suggestions {
@@ -15,7 +22,6 @@ pub struct Suggestions {
 }
 
 impl Suggestions {
-
     pub fn decode<R: Read + ?Sized>(src: &mut R, version: i32) -> IOResult<Self> {
         Ok(Self {
             start: VarInt::decode_simple(src)?.get(),
@@ -25,11 +31,15 @@ impl Suggestions {
                 for _ in 0..VarInt::decode_simple(src)?.get() {
                     matches.push(Suggestion {
                         text: EncodingHelper::read_string(src, 32767)?,
-                        tooltip: if src.read_u8()? != 0 { Some(EncodingHelper::read_text(src, version)?) } else { None },
+                        tooltip: if src.read_u8()? != 0 {
+                            Some(EncodingHelper::read_text(src, version)?)
+                        } else {
+                            None
+                        },
                     });
                 }
                 matches
-            }
+            },
         })
     }
 
@@ -63,19 +73,20 @@ pub struct Commands {
 }
 
 impl ServerPacket for Commands {
-
     fn get_type(&self) -> ServerPacketType {
         ServerPacketType::Commands
     }
 }
 
 impl Packet for Commands {
-
     fn decode<R: Read + ?Sized>(src: &mut R, version: i32) -> IOResult<Self>
-        where
-            Self: Sized {
+    where
+        Self: Sized,
+    {
         Ok(Self {
-            nodes: (0..VarInt::decode_simple(src)?.get()).map(|_| CommandNode::decode(src, version)).collect::<IOResult<Vec<_>>>()?,
+            nodes: (0..VarInt::decode_simple(src)?.get())
+                .map(|_| CommandNode::decode(src, version))
+                .collect::<IOResult<Vec<_>>>()?,
             root_index: VarInt::decode_simple(src)?.get() as usize,
         })
     }
@@ -99,16 +110,22 @@ pub struct CommandNode {
 }
 
 impl CommandNode {
-
     pub fn encode<W: Write + ?Sized>(&self, dst: &mut W) -> IOResult<()> {
         let mut flags = match self.node_type {
             CommandNodeType::Root => 0,
             CommandNodeType::Literal(_) => 1,
             CommandNodeType::Argument { .. } => 2,
         };
-        if self.executable { flags |= 0x04; }
-        if self.redirect_index.is_some() { flags |= 0x08; }
-        if let CommandNodeType::Argument { suggestions_type, .. } = &self.node_type {
+        if self.executable {
+            flags |= 0x04;
+        }
+        if self.redirect_index.is_some() {
+            flags |= 0x08;
+        }
+        if let CommandNodeType::Argument {
+            suggestions_type, ..
+        } = &self.node_type
+        {
             suggestions_type.is_some().then(|| flags |= 0x10);
         }
         dst.write_u8(flags)?;
@@ -121,23 +138,31 @@ impl CommandNode {
             VarInt(*redirect_index as i32).encode_simple(dst)?;
         }
         match &self.node_type {
-            CommandNodeType::Root => {},
+            CommandNodeType::Root => {}
             CommandNodeType::Literal(name) => EncodingHelper::write_string(dst, name)?,
-            CommandNodeType::Argument { name, parser_id, properties, suggestions_type } => {
+            CommandNodeType::Argument {
+                name,
+                parser_id,
+                properties,
+                suggestions_type,
+            } => {
                 EncodingHelper::write_string(dst, name)?;
                 VarInt(*parser_id as i32).encode_simple(dst)?;
                 if let Some(ref properties) = properties {
                     properties.encode(dst)?;
                 }
                 if let Some(ref suggestions_type) = suggestions_type {
-                    EncodingHelper::write_string(dst, match suggestions_type {
-                        SuggestionsType::AskServer => "minecraft:ask_server",
-                        SuggestionsType::AllRecipes => "minecraft:all_recipes",
-                        SuggestionsType::AvailableSounds => "minecraft:available_sounds",
-                        SuggestionsType::SummonableEntities => "minecraft:summonable_entities",
-                    })?;
+                    EncodingHelper::write_string(
+                        dst,
+                        match suggestions_type {
+                            SuggestionsType::AskServer => "minecraft:ask_server",
+                            SuggestionsType::AllRecipes => "minecraft:all_recipes",
+                            SuggestionsType::AvailableSounds => "minecraft:available_sounds",
+                            SuggestionsType::SummonableEntities => "minecraft:summonable_entities",
+                        },
+                    )?;
                 }
-            },
+            }
         }
         Ok(())
     }
@@ -168,15 +193,30 @@ impl CommandNode {
                         "minecraft:all_recipes" => SuggestionsType::AllRecipes,
                         "minecraft:available_sounds" => SuggestionsType::AvailableSounds,
                         "minecraft:summonable_entities" => SuggestionsType::SummonableEntities,
-                        _ => return Err(IOError::new(IOErrorKind::InvalidData, "Invalid suggestions type")),
+                        _ => {
+                            return Err(IOError::new(
+                                IOErrorKind::InvalidData,
+                                "Invalid suggestions type",
+                            ))
+                        }
                     }),
                     false => None,
                 };
-                CommandNodeType::Argument { name, parser_id, properties, suggestions_type }
-            },
+                CommandNodeType::Argument {
+                    name,
+                    parser_id,
+                    properties,
+                    suggestions_type,
+                }
+            }
             _ => return Err(IOError::new(IOErrorKind::InvalidData, "Invalid node type")),
         };
-        Ok(Self { childrens, node_type, executable, redirect_index })
+        Ok(Self {
+            childrens,
+            node_type,
+            executable,
+            redirect_index,
+        })
     }
 }
 
@@ -217,7 +257,6 @@ pub enum ArgumentProperty {
 }
 
 impl ArgumentProperty {
-
     pub fn encode<W: Write + ?Sized>(&self, dst: &mut W) -> IOResult<()> {
         match self {
             Self::Double { min, max } => {
@@ -231,7 +270,7 @@ impl ArgumentProperty {
                 if let Some(max) = max {
                     dst.write_f64::<BE>(*max)?;
                 }
-            },
+            }
             Self::Float { min, max } => {
                 let mut flags = 0;
                 min.is_some().then(|| flags |= 0x01);
@@ -243,7 +282,7 @@ impl ArgumentProperty {
                 if let Some(max) = max {
                     dst.write_f32::<BE>(*max)?;
                 }
-            },
+            }
             Self::Int { min, max } => {
                 let mut flags = 0;
                 min.is_some().then(|| flags |= 0x01);
@@ -255,7 +294,7 @@ impl ArgumentProperty {
                 if let Some(max) = max {
                     dst.write_i32::<BE>(*max)?;
                 }
-            },
+            }
             Self::Long { min, max } => {
                 let mut flags = 0;
                 min.is_some().then(|| flags |= 0x01);
@@ -267,14 +306,14 @@ impl ArgumentProperty {
                 if let Some(max) = max {
                     dst.write_i64::<BE>(*max)?;
                 }
-            },
+            }
             Self::String(parser_type) => {
                 dst.write_u8(match parser_type {
                     StringParserType::SingleWord => 0,
                     StringParserType::QuotablePhrase => 1,
                     StringParserType::GreedyPhrase => 2,
                 })?;
-            },
+            }
             Self::Entity { mask } => dst.write_u8(*mask)?,
             Self::ScoreHolder { mask } => dst.write_u8(*mask)?,
             Self::Time { min } => dst.write_i32::<BE>(*min)?,
@@ -288,29 +327,61 @@ impl ArgumentProperty {
 
     pub fn decode_double<R: Read + ?Sized>(src: &mut R) -> IOResult<Option<Self>> {
         let flags = src.read_u8()?;
-        let min = if flags & 0x01 != 0 { Some(src.read_f64::<BE>()?) } else { None };
-        let max = if flags & 0x02 != 0 { Some(src.read_f64::<BE>()?) } else { None };
+        let min = if flags & 0x01 != 0 {
+            Some(src.read_f64::<BE>()?)
+        } else {
+            None
+        };
+        let max = if flags & 0x02 != 0 {
+            Some(src.read_f64::<BE>()?)
+        } else {
+            None
+        };
         Ok(Some(Self::Double { min, max }))
     }
 
     pub fn decode_float<R: Read + ?Sized>(src: &mut R) -> IOResult<Option<Self>> {
         let flags = src.read_u8()?;
-        let min = if flags & 0x01 != 0 { Some(src.read_f32::<BE>()?) } else { None };
-        let max = if flags & 0x02 != 0 { Some(src.read_f32::<BE>()?) } else { None };
+        let min = if flags & 0x01 != 0 {
+            Some(src.read_f32::<BE>()?)
+        } else {
+            None
+        };
+        let max = if flags & 0x02 != 0 {
+            Some(src.read_f32::<BE>()?)
+        } else {
+            None
+        };
         Ok(Some(Self::Float { min, max }))
     }
 
     pub fn decode_int<R: Read + ?Sized>(src: &mut R) -> IOResult<Option<Self>> {
         let flags = src.read_u8()?;
-        let min = if flags & 0x01 != 0 { Some(src.read_i32::<BE>()?) } else { None };
-        let max = if flags & 0x02 != 0 { Some(src.read_i32::<BE>()?) } else { None };
+        let min = if flags & 0x01 != 0 {
+            Some(src.read_i32::<BE>()?)
+        } else {
+            None
+        };
+        let max = if flags & 0x02 != 0 {
+            Some(src.read_i32::<BE>()?)
+        } else {
+            None
+        };
         Ok(Some(Self::Int { min, max }))
     }
 
     pub fn decode_long<R: Read + ?Sized>(src: &mut R) -> IOResult<Option<Self>> {
         let flags = src.read_u8()?;
-        let min = if flags & 0x01 != 0 { Some(src.read_i64::<BE>()?) } else { None };
-        let max = if flags & 0x02 != 0 { Some(src.read_i64::<BE>()?) } else { None };
+        let min = if flags & 0x01 != 0 {
+            Some(src.read_i64::<BE>()?)
+        } else {
+            None
+        };
+        let max = if flags & 0x02 != 0 {
+            Some(src.read_i64::<BE>()?)
+        } else {
+            None
+        };
         Ok(Some(Self::Long { min, max }))
     }
 
@@ -319,50 +390,81 @@ impl ArgumentProperty {
             0 => Self::String(StringParserType::SingleWord),
             1 => Self::String(StringParserType::QuotablePhrase),
             2 => Self::String(StringParserType::GreedyPhrase),
-            _ => return Err(IOError::new(IOErrorKind::InvalidData, "Invalid string parser type")),
+            _ => {
+                return Err(IOError::new(
+                    IOErrorKind::InvalidData,
+                    "Invalid string parser type",
+                ))
+            }
         }))
     }
 
     fn decode_entity<R: Read + ?Sized>(src: &mut R) -> IOResult<Option<Self>> {
-        Ok(Some(Self::Entity { mask: src.read_u8()? }))
+        Ok(Some(Self::Entity {
+            mask: src.read_u8()?,
+        }))
     }
 
     fn decode_score_holder<R: Read + ?Sized>(src: &mut R) -> IOResult<Option<Self>> {
-        Ok(Some(Self::ScoreHolder { mask: src.read_u8()? }))
+        Ok(Some(Self::ScoreHolder {
+            mask: src.read_u8()?,
+        }))
     }
 
     fn decode_time<R: Read + ?Sized>(src: &mut R) -> IOResult<Option<Self>> {
-        Ok(Some(Self::Time { min: src.read_i32::<BE>()? }))
+        Ok(Some(Self::Time {
+            min: src.read_i32::<BE>()?,
+        }))
     }
 
     fn decode_resource_or_tag<R: Read + ?Sized>(src: &mut R) -> IOResult<Option<Self>> {
-        Ok(Some(Self::ResourceOrTag { registry: EncodingHelper::read_string(src, 32767)? }))
+        Ok(Some(Self::ResourceOrTag {
+            registry: EncodingHelper::read_string(src, 32767)?,
+        }))
     }
 
     fn decode_resource_or_tag_key<R: Read + ?Sized>(src: &mut R) -> IOResult<Option<Self>> {
-        Ok(Some(Self::ResourceOrTagKey { registry: EncodingHelper::read_string(src, 32767)? }))
+        Ok(Some(Self::ResourceOrTagKey {
+            registry: EncodingHelper::read_string(src, 32767)?,
+        }))
     }
 
     fn decode_resource<R: Read + ?Sized>(src: &mut R) -> IOResult<Option<Self>> {
-        Ok(Some(Self::Resource { registry: EncodingHelper::read_string(src, 32767)? }))
+        Ok(Some(Self::Resource {
+            registry: EncodingHelper::read_string(src, 32767)?,
+        }))
     }
 
     fn decode_resource_key<R: Read + ?Sized>(src: &mut R) -> IOResult<Option<Self>> {
-        Ok(Some(Self::ResourceKey { registry: EncodingHelper::read_string(src, 32767)? }))
+        Ok(Some(Self::ResourceKey {
+            registry: EncodingHelper::read_string(src, 32767)?,
+        }))
     }
 
     fn decode_nothing<R: Read + ?Sized>(_src: &mut R) -> IOResult<Option<Self>> {
         Ok(None)
     }
 
-    pub fn decode_by_parser_id<R: Read + ?Sized>(src: &mut R, parser_id: usize, version: i32) -> IOResult<Option<Self>> {
+    pub fn decode_by_parser_id<R: Read + ?Sized>(
+        src: &mut R,
+        parser_id: usize,
+        version: i32,
+    ) -> IOResult<Option<Self>> {
         let decoder_list = if version >= R1_19 {
-            if version >= R1_20_5 { ARGUMENT_PROPERTY_DECODERS_1_20_5.as_slice() }
-            else if version >= R1_20_3 { ARGUMENT_PROPERTY_DECODERS_1_20_3.as_slice() }
-            else if version >= R1_19_4 { ARGUMENT_PROPERTY_DECODERS_1_19_4.as_slice() }
-            else if version >= R1_19_3 { ARGUMENT_PROPERTY_DECODERS_1_19_3.as_slice() }
-            else { ARGUMENT_PROPERTY_DECODERS_1_19.as_slice() }
-        } else { ARGUMENT_PROPERTY_DECODERS.as_slice() };
+            if version >= R1_20_5 {
+                ARGUMENT_PROPERTY_DECODERS_1_20_5.as_slice()
+            } else if version >= R1_20_3 {
+                ARGUMENT_PROPERTY_DECODERS_1_20_3.as_slice()
+            } else if version >= R1_19_4 {
+                ARGUMENT_PROPERTY_DECODERS_1_19_4.as_slice()
+            } else if version >= R1_19_3 {
+                ARGUMENT_PROPERTY_DECODERS_1_19_3.as_slice()
+            } else {
+                ARGUMENT_PROPERTY_DECODERS_1_19.as_slice()
+            }
+        } else {
+            ARGUMENT_PROPERTY_DECODERS.as_slice()
+        };
         if parser_id >= decoder_list.len() {
             return Err(IOError::new(IOErrorKind::InvalidData, "Invalid parser id"));
         }

@@ -11,19 +11,19 @@ use super::packets::ProtocolState;
 pub enum ServerPacketType {
     LoginDisconnect, // login disconnected
 
-    EncryptionRequest, // login
+    EncryptionRequest,  // login
     LoginPluginRequest, // login
-    CookieRequest, // login config play
-    LoginSuccess, // login
-    SetCompression, // login
+    CookieRequest,      // login config play
+    LoginSuccess,       // login
+    SetCompression,     // login
 
     StartConfiguration, // game
-    Kick, // config, game
+    Kick,               // config, game
     ServerCustomPayload,
     FinishConfiguration, // config
-    BundleDelimiter, // game
-    SystemChatMessage, // game
-    Commands, // game
+    BundleDelimiter,     // game
+    SystemChatMessage,   // game
+    Commands,            // game
     TabCompleteResponse, // game
 }
 
@@ -41,11 +41,11 @@ pub enum ClientPacketType {
 
     ClientCustomPayload, // config / game
 
-    ConfigurationAck, // game
-    FinishConfiguration, // config
-    ClientSettings, // config game
+    ConfigurationAck,      // game
+    FinishConfiguration,   // config
+    ClientSettings,        // config game
     UnsignedClientCommand, // game
-    TabCompleteRequest, // game
+    TabCompleteRequest,    // game
 }
 
 pub struct PacketRegistry {
@@ -61,31 +61,60 @@ lazy_static! {
 
 #[allow(dead_code)]
 impl PacketRegistry {
-    
     pub fn instance() -> &'static Self {
         &PACKET_REGISTRY
     }
-    
-    pub fn get_server_packet_id(&self, state: ProtocolState, version: i32, packet_type: ServerPacketType) -> Option<i32> {
-        self.server_packet_ids.get(&(state, packet_type, version)).copied().map(|id| id as i32)
+
+    pub fn get_server_packet_id(
+        &self,
+        state: ProtocolState,
+        version: i32,
+        packet_type: ServerPacketType,
+    ) -> Option<i32> {
+        self.server_packet_ids
+            .get(&(state, packet_type, version))
+            .copied()
+            .map(|id| id as i32)
     }
-    
-    pub fn get_server_packet_type(&self, state: ProtocolState, version: i32, packet_id: i32) -> Option<ServerPacketType> {
+
+    pub fn get_server_packet_type(
+        &self,
+        state: ProtocolState,
+        version: i32,
+        packet_id: i32,
+    ) -> Option<ServerPacketType> {
         if !(0..256).contains(&packet_id) {
             return None;
         }
-        self.server_packet_types.get(&(state, packet_id as u8, version)).copied()
+        self.server_packet_types
+            .get(&(state, packet_id as u8, version))
+            .copied()
     }
-    
-    pub fn get_client_packet_id(&self, state: ProtocolState, version: i32, packet_type: ClientPacketType) -> Option<i32> {
-        self.client_packet_ids.get(&(state, packet_type, version)).copied().map(|id| id as i32)
+
+    pub fn get_client_packet_id(
+        &self,
+        state: ProtocolState,
+        version: i32,
+        packet_type: ClientPacketType,
+    ) -> Option<i32> {
+        self.client_packet_ids
+            .get(&(state, packet_type, version))
+            .copied()
+            .map(|id| id as i32)
     }
-    
-    pub fn get_client_packet_type(&self, state: ProtocolState, version: i32, packet_id: i32) -> Option<ClientPacketType> {
+
+    pub fn get_client_packet_type(
+        &self,
+        state: ProtocolState,
+        version: i32,
+        packet_id: i32,
+    ) -> Option<ClientPacketType> {
         if !(0..256).contains(&packet_id) {
             return None;
         }
-        self.client_packet_types.get(&(state, packet_id as u8, version)).copied()
+        self.client_packet_types
+            .get(&(state, packet_id as u8, version))
+            .copied()
     }
 
     fn new() -> Self {
@@ -102,10 +131,14 @@ impl PacketRegistry {
     }
 
     fn register_packets(&mut self) {
-        let mut client_packet_ids = HashMap::<(ProtocolState, ClientPacketType), Vec<(RangeFrom<i32>, u8)>>::new();
-        let mut client_packet_types = HashMap::<(ProtocolState, u8), Vec<(RangeFrom<i32>, ClientPacketType)>>::new();
-        let mut server_packet_ids = HashMap::<(ProtocolState, ServerPacketType), Vec<(RangeFrom<i32>, u8)>>::new();
-        let mut server_packet_types = HashMap::<(ProtocolState, u8), Vec<(RangeFrom<i32>, ServerPacketType)>>::new();
+        let mut client_packet_ids =
+            HashMap::<(ProtocolState, ClientPacketType), Vec<(RangeFrom<i32>, u8)>>::new();
+        let mut client_packet_types =
+            HashMap::<(ProtocolState, u8), Vec<(RangeFrom<i32>, ClientPacketType)>>::new();
+        let mut server_packet_ids =
+            HashMap::<(ProtocolState, ServerPacketType), Vec<(RangeFrom<i32>, u8)>>::new();
+        let mut server_packet_types =
+            HashMap::<(ProtocolState, u8), Vec<(RangeFrom<i32>, ServerPacketType)>>::new();
 
         macro_rules! begin {
             (Client, $state:ident, $typ:ident; $( ($ver:ident, $id:literal) )*) => {{
@@ -125,14 +158,16 @@ impl PacketRegistry {
                 )*
             }};
         }
-        { // Handshake
+        {
+            // Handshake
             begin! {
                 Client, Handshake, Handshake;
                 (R1_8, 0x00)
             }
         }
 
-        { // Login
+        {
+            // Login
             begin! {
                 Client, Login, LoginRequest;
                 (R1_8, 0x00)
@@ -180,7 +215,8 @@ impl PacketRegistry {
             }
         }
 
-        { // Configuration state
+        {
+            // Configuration state
             begin! {
                 Client, Config, ClientSettings;
                 (R1_20_2, 0x00)
@@ -191,7 +227,7 @@ impl PacketRegistry {
                 (R1_20_2, 0x01)
                 (R1_20_5, 0x02)
             }
-            
+
             begin! {
                 Client, Config, FinishConfiguration;
                 (R1_20_2, 0x02)
@@ -220,7 +256,8 @@ impl PacketRegistry {
             }
         }
 
-        { // Game state
+        {
+            // Game state
             begin! {
                 Client, Game, ClientSettings;
                 (R1_19_4, 0x08)
@@ -297,7 +334,7 @@ impl PacketRegistry {
                 (R1_20_2, 0x18 )
                 (R1_20_5, 0x19 )
             }
-            
+
             begin! {
                 Server, Game, Kick;
                 (R1_8, 0x40)
@@ -366,8 +403,10 @@ impl PacketRegistry {
             for ((state, packet_type), list) in server_packet_ids.iter() {
                 for (version_range, packet_id) in list.iter().rev() {
                     if version_range.contains(version) {
-                        self.server_packet_ids.insert((*state, *packet_type, *version), *packet_id);
-                        self.server_packet_types.insert((*state, *packet_id, *version), *packet_type);
+                        self.server_packet_ids
+                            .insert((*state, *packet_type, *version), *packet_id);
+                        self.server_packet_types
+                            .insert((*state, *packet_id, *version), *packet_type);
                         break;
                     }
                 }
@@ -376,8 +415,10 @@ impl PacketRegistry {
             for ((state, packet_type), list) in client_packet_ids.iter() {
                 for (version_range, packet_id) in list.iter().rev() {
                     if version_range.contains(version) {
-                        self.client_packet_ids.insert((*state, *packet_type, *version), *packet_id);
-                        self.client_packet_types.insert((*state, *packet_id, *version), *packet_type);
+                        self.client_packet_ids
+                            .insert((*state, *packet_type, *version), *packet_id);
+                        self.client_packet_types
+                            .insert((*state, *packet_id, *version), *packet_type);
                         break;
                     }
                 }

@@ -33,7 +33,8 @@ Right now you need to restart to apply config changes.
 
 ## Security 🔗
 
-You should firewall the ports of you backend servers or bind you backend servers locally, otherwise someone could join your backend servers without authentication.
+You should firewall the ports of you backend servers or bind you backend servers locally, otherwise someone could join
+your backend servers without authentication.
 
 ## Features 📃
 
@@ -68,7 +69,7 @@ run the following command in the repos directory:
 cargo build --release
 
 ## Contribute 🖋️
- 
+
 If you want to contribute just fork the project and create a Pull Request
 Our team will take a look at your work and will decide if it will be merged or need changes real quick
 

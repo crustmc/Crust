@@ -4,11 +4,12 @@ use crate::server::command::CommandSender;
 use crate::server::ProxyServer;
 use env_logger::{Builder, Target, WriteStyle};
 use log::{error, LevelFilter};
+use rustyline::config::{BellStyle, Configurer};
 use rustyline::{DefaultEditor, ExternalPrinter};
 use std::fmt::Arguments;
 use std::io;
 use std::io::Write;
-use rustyline::config::{BellStyle, Configurer};
+use tokio::io::AsyncWriteExt;
 
 pub mod auth;
 pub mod chat;
@@ -69,9 +70,11 @@ fn main() {
     let mut rl = DefaultEditor::new().unwrap();
     rl.set_bell_style(BellStyle::None);
     rl.set_auto_add_history(true);
-    
+
     let printer = rl.create_external_printer().unwrap();
-    let target = Target::Pipe(Box::new(SharedWriter { printer: Box::new(printer) }));
+    let target = Target::Pipe(Box::new(SharedWriter {
+        printer: Box::new(printer),
+    }));
 
     Builder::from_default_env()
         .write_style(WriteStyle::Always)
@@ -87,8 +90,12 @@ fn main() {
         if line.is_empty() {
             continue;
         }
-        if !ProxyServer::instance().command_registry().execute(&CommandSender::Console, line.as_str()) {
+        if !ProxyServer::instance()
+            .command_registry()
+            .execute(&CommandSender::Console, line.as_str())
+        {
             error!("Unknown command");
         }
     }
+    ProxyServer::instance().shutdown(None);
 }

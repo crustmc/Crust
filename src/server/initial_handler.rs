@@ -1,14 +1,38 @@
-use std::{io::Cursor, net::SocketAddr};
-use std::time::Duration;
 use byteorder::{WriteBytesExt, BE};
 use rand::RngCore;
 use rsa::{pkcs8::EncodePublicKey, Pkcs1v15Encrypt};
-use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::TcpStream};
+use std::time::Duration;
+use std::{io::Cursor, net::SocketAddr};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::TcpStream,
+};
 
-use crate::{auth::GameProfile, chat::{Text, TextContent}, haproxy::{HAProxyAdresses, HAProxyCommand, HAProxyMessage, HAProxyMessageV1, HAProxyMessageV2, HAProxyProtocolFamily}, server::{packet_ids::{ClientPacketType, PacketRegistry}, packets::{read_and_decode_packet, EncryptionResponse, Packet, ProtocolState}}, util::{EncodingHelper, IOError, IOErrorKind, IOResult, VarInt}};
 use self::packets::SetCompression;
+use crate::{
+    auth::GameProfile,
+    chat::{Text, TextContent},
+    haproxy::{
+        HAProxyAdresses, HAProxyCommand, HAProxyMessage, HAProxyMessageV1, HAProxyMessageV2,
+        HAProxyProtocolFamily,
+    },
+    server::{
+        packet_ids::{ClientPacketType, PacketRegistry},
+        packets::{read_and_decode_packet, EncryptionResponse, Packet, ProtocolState},
+    },
+    util::{EncodingHelper, IOError, IOErrorKind, IOResult, VarInt},
+};
 
-use super::{encryption::*, packets::{self, encode_and_send_packet, EncryptionRequest, Handshake, LoginDisconnect, LoginRequest, LoginSuccess, PROTOCOL_READ_TIMEOUT, PROTOCOL_STATE_LOGIN, PROTOCOL_STATE_STATUS, PROTOCOL_STATE_TRANSFER}, proxy_handler::ProxyingData, ProxyServer};
+use super::{
+    encryption::*,
+    packets::{
+        self, encode_and_send_packet, EncryptionRequest, Handshake, LoginDisconnect, LoginRequest,
+        LoginSuccess, PROTOCOL_READ_TIMEOUT, PROTOCOL_STATE_LOGIN, PROTOCOL_STATE_STATUS,
+        PROTOCOL_STATE_TRANSFER,
+    },
+    proxy_handler::ProxyingData,
+    ProxyServer,
+};
 
 macro_rules! check_timeout {
     ($fut:expr) => {
@@ -31,12 +55,16 @@ pub async fn handle(mut stream: TcpStream, mut peer_addr: SocketAddr) {
             match read_ha_proxy(&mut stream).await {
                 Ok(packet) => {
                     let new_addr = match packet {
-                        HAProxyMessage::V1(HAProxyMessageV1 { protocol_family }) => match protocol_family {
-                            HAProxyProtocolFamily::TCP4 { src, .. } => Some(src.into()),
-                            HAProxyProtocolFamily::TCP6 { src, .. } => Some(src.into()),
-                            HAProxyProtocolFamily::Unknown => None,
-                        },
-                        HAProxyMessage::V2(HAProxyMessageV2 { addresses, command, .. }) => {
+                        HAProxyMessage::V1(HAProxyMessageV1 { protocol_family }) => {
+                            match protocol_family {
+                                HAProxyProtocolFamily::TCP4 { src, .. } => Some(src.into()),
+                                HAProxyProtocolFamily::TCP6 { src, .. } => Some(src.into()),
+                                HAProxyProtocolFamily::Unknown => None,
+                            }
+                        }
+                        HAProxyMessage::V2(HAProxyMessageV2 {
+                            addresses, command, ..
+                        }) => {
                             if let HAProxyCommand::Local = command {
                                 None
                             } else {
@@ -55,11 +83,11 @@ pub async fn handle(mut stream: TcpStream, mut peer_addr: SocketAddr) {
                         log::debug!("Changed remote address {} to {}", peer_addr, new_addr);
                         peer_addr = new_addr;
                     }
-                },
+                }
                 Err(e) => {
                     log::debug!("[{}] HAProxy protocol failed to decode: {}", peer_addr, e);
                     return;
-                },
+                }
             }
         }
         let proxying_data = {
@@ -81,12 +109,22 @@ pub async fn handle(mut stream: TcpStream, mut peer_addr: SocketAddr) {
                     return;
                 }
                 PROTOCOL_STATE_LOGIN | PROTOCOL_STATE_TRANSFER => {
-                    
-                    if ProxyServer::instance().player_count as isize >= ProxyServer::instance().config.max_players as isize {
-                        send_login_disconnect(&mut stream, &mut buffer, Text::new(TextContent::literal("§cThe proxy is full".into())), handshake.version, -1, &mut None).await.ok();
+                    if ProxyServer::instance().player_count as isize
+                        >= ProxyServer::instance().config.max_players as isize
+                    {
+                        send_login_disconnect(
+                            &mut stream,
+                            &mut buffer,
+                            Text::new(TextContent::literal("§cThe proxy is full".into())),
+                            handshake.version,
+                            -1,
+                            &mut None,
+                        )
+                        .await
+                        .ok();
                         return;
                     }
-                    
+
                     match handle_login(&mut stream, handshake, &mut buffer, peer_addr).await {
                         Ok(state) => state,
                         Err(e) => {
@@ -95,7 +133,8 @@ pub async fn handle(mut stream: TcpStream, mut peer_addr: SocketAddr) {
                         }
                     }
                 }
-                _ => { // invalid state
+                _ => {
+                    // invalid state
                     return;
                 }
             }
@@ -115,31 +154,49 @@ async fn handle_status(mut stream: TcpStream, version: i32) -> IOResult<()> {
         }
         let id = stream.read_u8().await?;
         match id {
-            0 => { // status request
+            0 => {
+                // status request
                 if state == 2 {
-                    return Err(IOError::new(IOErrorKind::InvalidData, "Status request in ping state"));
+                    return Err(IOError::new(
+                        IOErrorKind::InvalidData,
+                        "Status request in ping state",
+                    ));
                 }
                 state = 2;
                 VarInt(0).encode(&mut write_buf, 5)?; // packet id
-                EncodingHelper::write_string(&mut write_buf, &super::status::get_status_response(version).to_string())?; // response
+                EncodingHelper::write_string(
+                    &mut write_buf,
+                    &super::status::get_status_response(version).to_string(),
+                )?; // response
 
-                VarInt(write_buf.len() as i32).encode_async(&mut stream, 3).await?; // length
+                VarInt(write_buf.len() as i32)
+                    .encode_async(&mut stream, 3)
+                    .await?; // length
                 stream.write_all(&write_buf).await?; // content
             }
-            1 => { // ping
+            1 => {
+                // ping
                 if state == 1 {
-                    return Err(IOError::new(IOErrorKind::InvalidData, "Ping request in status state"));
+                    return Err(IOError::new(
+                        IOErrorKind::InvalidData,
+                        "Ping request in status state",
+                    ));
                 }
                 let time = stream.read_u64().await?;
                 VarInt(1).encode(&mut write_buf, 5)?; // packet id
                 WriteBytesExt::write_u64::<BE>(&mut write_buf, time)?; // time
 
-                VarInt(write_buf.len() as i32).encode_async(&mut stream, 3).await?; // length
+                VarInt(write_buf.len() as i32)
+                    .encode_async(&mut stream, 3)
+                    .await?; // length
                 stream.write_all(&write_buf).await?; // content
                 break;
             }
             _ => {
-                return Err(IOError::new(IOErrorKind::InvalidData, "Bad status packet id"));
+                return Err(IOError::new(
+                    IOErrorKind::InvalidData,
+                    "Bad status packet id",
+                ));
             }
         }
     }
@@ -147,9 +204,14 @@ async fn handle_status(mut stream: TcpStream, version: i32) -> IOResult<()> {
 }
 
 async fn handshaking(stream: &mut TcpStream, buffer: &mut Vec<u8>) -> IOResult<Handshake> {
-    let handshake_length = check_timeout!(VarInt::decode_async(stream, 3)).await??.get();
+    let handshake_length = check_timeout!(VarInt::decode_async(stream, 3))
+        .await??
+        .get();
     if handshake_length < 6 || handshake_length > 1000 {
-        return Err(IOError::new(IOErrorKind::InvalidData, "Bad handshake length"));
+        return Err(IOError::new(
+            IOErrorKind::InvalidData,
+            "Bad handshake length",
+        ));
     }
     buffer.resize(handshake_length as usize, 0);
     check_timeout!(stream.read_exact(buffer)).await??;
@@ -157,14 +219,33 @@ async fn handshaking(stream: &mut TcpStream, buffer: &mut Vec<u8>) -> IOResult<H
 
     let id = VarInt::decode(&mut reader, 5)?.get();
     if id != 0 {
-        return Err(IOError::new(IOErrorKind::InvalidData, "Bad handshake packet id"));
+        return Err(IOError::new(
+            IOErrorKind::InvalidData,
+            "Bad handshake packet id",
+        ));
     }
     let handshake = Handshake::decode(&mut reader, 0)?;
 
-    if handshake.next_state == PROTOCOL_STATE_LOGIN || handshake.next_state == PROTOCOL_STATE_TRANSFER {
+    if handshake.next_state == PROTOCOL_STATE_LOGIN
+        || handshake.next_state == PROTOCOL_STATE_TRANSFER
+    {
         if !crate::version::is_supported(handshake.version) {
-            send_login_disconnect(stream, buffer, Text::new(TextContent::literal("§cUnsupported protocol version".into())), handshake.version, -1, &mut None).await.ok();
-            return Err(IOError::new(IOErrorKind::InvalidData, "Unsupported protocol version"));
+            send_login_disconnect(
+                stream,
+                buffer,
+                Text::new(TextContent::literal(
+                    "§cUnsupported protocol version".into(),
+                )),
+                handshake.version,
+                -1,
+                &mut None,
+            )
+            .await
+            .ok();
+            return Err(IOError::new(
+                IOErrorKind::InvalidData,
+                "Unsupported protocol version",
+            ));
         }
     } else if handshake.next_state != PROTOCOL_STATE_STATUS {
         return Err(IOError::new(IOErrorKind::InvalidData, "Invalid next state"));
@@ -172,16 +253,31 @@ async fn handshaking(stream: &mut TcpStream, buffer: &mut Vec<u8>) -> IOResult<H
     Ok(handshake)
 }
 
-pub async fn send_login_disconnect(stream: &mut TcpStream, buffer: &mut Vec<u8>, text: Text, version: i32, compression: i32, encryption: &mut Option<PacketEncryption>) -> IOResult<()> {
-    packets::get_full_server_packet_buf_write_buffer(buffer, &LoginDisconnect {
-        text
-    }, version, ProtocolState::Login)?;
+pub async fn send_login_disconnect(
+    stream: &mut TcpStream,
+    buffer: &mut Vec<u8>,
+    text: Text,
+    version: i32,
+    compression: i32,
+    encryption: &mut Option<PacketEncryption>,
+) -> IOResult<()> {
+    packets::get_full_server_packet_buf_write_buffer(
+        buffer,
+        &LoginDisconnect { text },
+        version,
+        ProtocolState::Login,
+    )?;
     encode_and_send_packet(stream, buffer, &mut vec![], compression, encryption).await?;
     tokio::time::sleep(Duration::from_millis(250)).await;
     Ok(())
 }
 
-async fn handle_login(stream: &mut TcpStream, handshake: Handshake, buffer: &mut Vec<u8>, address: SocketAddr) -> IOResult<ProxyingData> {
+async fn handle_login(
+    stream: &mut TcpStream,
+    handshake: Handshake,
+    buffer: &mut Vec<u8>,
+    address: SocketAddr,
+) -> IOResult<ProxyingData> {
     #[derive(Debug, PartialEq, Eq)]
     enum LoginState {
         Request,
@@ -202,7 +298,14 @@ async fn handle_login(stream: &mut TcpStream, handshake: Handshake, buffer: &mut
     let mut profile = None;
     loop {
         buffer.clear();
-        read_and_decode_packet(stream, buffer, &mut protocol_buf, compression_threshold, &mut decryption).await?;
+        read_and_decode_packet(
+            stream,
+            buffer,
+            &mut protocol_buf,
+            compression_threshold,
+            &mut decryption,
+        )
+        .await?;
 
         let mut reader = Cursor::new(&*buffer);
         let id = VarInt::decode_simple(&mut reader)?.get();
@@ -212,16 +315,29 @@ async fn handle_login(stream: &mut TcpStream, handshake: Handshake, buffer: &mut
             protocol_buf: &mut protocol_buf,
         };
 
-        let packet_type = PacketRegistry::instance().get_client_packet_type(ProtocolState::Login, version, id);
+        let packet_type =
+            PacketRegistry::instance().get_client_packet_type(ProtocolState::Login, version, id);
         if let Some(packet_type) = packet_type {
             match packet_type {
                 ClientPacketType::LoginRequest => {
                     if login_state != LoginState::Request {
-                        return Err(IOError::new(IOErrorKind::InvalidData, format!("Received login request in {:?} state", login_state)));
+                        return Err(IOError::new(
+                            IOErrorKind::InvalidData,
+                            format!("Received login request in {:?} state", login_state),
+                        ));
                     }
                     let request = LoginRequest::decode(&mut reader, version)?;
                     if !crate::util::is_username_valid(&request.name) {
-                        send_login_disconnect(stream, buffers.write_buf, Text::new(TextContent::literal("§cInvalid username".into())), version, compression_threshold, &mut encryption).await.ok();
+                        send_login_disconnect(
+                            stream,
+                            buffers.write_buf,
+                            Text::new(TextContent::literal("§cInvalid username".into())),
+                            version,
+                            compression_threshold,
+                            &mut encryption,
+                        )
+                        .await
+                        .ok();
                         return Err(IOError::new(IOErrorKind::InvalidData, "Bad username"));
                     }
                     let cfg = ProxyServer::instance().config();
@@ -234,36 +350,90 @@ async fn handle_login(stream: &mut TcpStream, handshake: Handshake, buffer: &mut
                             });
                         }
                         login_state = LoginState::Encryption;
-                        let data = send_encryption(stream, handshake.version, compression_threshold, buffers).await?;
+                        let data = send_encryption(
+                            stream,
+                            handshake.version,
+                            compression_threshold,
+                            buffers,
+                        )
+                        .await?;
                         server_id = Some(data.0);
                         verify_token = Some(data.1);
                     } else {
-                        profile = Some(finish_login(stream, GameProfile {
-                            id: crate::util::generate_uuid(&request.name).to_string(),
-                            name: request.name.clone(),
-                            properties: Vec::new(),
-                        }, handshake.version, buffers, &mut compression_threshold, &mut None).await?);
+                        profile = Some(
+                            finish_login(
+                                stream,
+                                GameProfile {
+                                    id: crate::util::generate_uuid(&request.name).to_string(),
+                                    name: request.name.clone(),
+                                    properties: Vec::new(),
+                                },
+                                handshake.version,
+                                buffers,
+                                &mut compression_threshold,
+                                &mut None,
+                            )
+                            .await?,
+                        );
                         login_state = LoginState::LoginAck;
                     };
                     login_request = Some(request);
                 }
                 ClientPacketType::EncryptionResponse => {
                     if login_state != LoginState::Encryption {
-                        return Err(IOError::new(IOErrorKind::InvalidData, format!("Received encryption response in {:?} state", login_state)));
+                        return Err(IOError::new(
+                            IOErrorKind::InvalidData,
+                            format!("Received encryption response in {:?} state", login_state),
+                        ));
                     }
                     let response = EncryptionResponse::decode(&mut reader, version)?;
-                    let secret = ProxyServer::instance().rsa_private_key().decrypt(Pkcs1v15Encrypt, &response.shared_secret)
-                        .map_err(|e| IOError::new(IOErrorKind::InvalidData, format!("Failed to decrypt shared secret: {}", e)))?;
+                    let secret = ProxyServer::instance()
+                        .rsa_private_key()
+                        .decrypt(Pkcs1v15Encrypt, &response.shared_secret)
+                        .map_err(|e| {
+                            IOError::new(
+                                IOErrorKind::InvalidData,
+                                format!("Failed to decrypt shared secret: {}", e),
+                            )
+                        })?;
                     if secret.len() != 16 {
-                        send_login_disconnect(stream, buffers.write_buf, Text::new(TextContent::literal("§cInvalid shared secret".into())), version, compression_threshold, &mut encryption).await.ok();
-                        return Err(IOError::new(IOErrorKind::InvalidData, "Bad shared secret length"));
+                        send_login_disconnect(
+                            stream,
+                            buffers.write_buf,
+                            Text::new(TextContent::literal("§cInvalid shared secret".into())),
+                            version,
+                            compression_threshold,
+                            &mut encryption,
+                        )
+                        .await
+                        .ok();
+                        return Err(IOError::new(
+                            IOErrorKind::InvalidData,
+                            "Bad shared secret length",
+                        ));
                     }
 
                     if let Some(ref token) = response.verify_token {
-                        let token = ProxyServer::instance().rsa_private_key().decrypt(Pkcs1v15Encrypt, token)
-                            .map_err(|e| IOError::new(IOErrorKind::InvalidData, format!("Failed to decrypt verify token: {}", e)))?;
+                        let token = ProxyServer::instance()
+                            .rsa_private_key()
+                            .decrypt(Pkcs1v15Encrypt, token)
+                            .map_err(|e| {
+                                IOError::new(
+                                    IOErrorKind::InvalidData,
+                                    format!("Failed to decrypt verify token: {}", e),
+                                )
+                            })?;
                         if verify_token.as_ref().unwrap().as_slice() != token {
-                            send_login_disconnect(stream, buffers.write_buf, Text::new(TextContent::literal("§cInvalid verify token".into())), version, compression_threshold, &mut encryption).await.ok();
+                            send_login_disconnect(
+                                stream,
+                                buffers.write_buf,
+                                Text::new(TextContent::literal("§cInvalid verify token".into())),
+                                version,
+                                compression_threshold,
+                                &mut encryption,
+                            )
+                            .await
+                            .ok();
                             return Err(IOError::new(IOErrorKind::InvalidData, "Bad verify token"));
                         }
                     }
@@ -272,27 +442,55 @@ async fn handle_login(stream: &mut TcpStream, handshake: Handshake, buffer: &mut
 
                     let cfg = ProxyServer::instance().config();
                     if cfg.online_mode {
-                        match crate::auth::has_joined(&login_request.as_ref().unwrap().name, server_id.as_ref().unwrap(), &secret, match cfg.prevent_proxy_connections {
-                            true => Some(stream.peer_addr().unwrap().ip()),
-                            false => None,
-                        }).await? {
+                        match crate::auth::has_joined(
+                            &login_request.as_ref().unwrap().name,
+                            server_id.as_ref().unwrap(),
+                            &secret,
+                            match cfg.prevent_proxy_connections {
+                                true => Some(stream.peer_addr().unwrap().ip()),
+                                false => None,
+                            },
+                        )
+                        .await?
+                        {
                             Some(p) => profile = Some(p),
-                            None => return Err(IOError::new(IOErrorKind::InvalidData, "Failed to verify user")),
+                            None => {
+                                return Err(IOError::new(
+                                    IOErrorKind::InvalidData,
+                                    "Failed to verify user",
+                                ))
+                            }
                         }
                     }
 
                     encryption = Some(PacketEncryption::new(&secret));
                     decryption = Some(PacketDecryption::new(&secret));
 
-                    profile = Some(finish_login(stream, profile.take().unwrap(), version, buffers, &mut compression_threshold, &mut encryption).await?);
+                    profile = Some(
+                        finish_login(
+                            stream,
+                            profile.take().unwrap(),
+                            version,
+                            buffers,
+                            &mut compression_threshold,
+                            &mut encryption,
+                        )
+                        .await?,
+                    );
                     login_state = LoginState::LoginAck;
                 }
                 ClientPacketType::LoginPluginResponse => {
-                    return Err(IOError::new(IOErrorKind::InvalidData, "invalid login payload response"));
+                    return Err(IOError::new(
+                        IOErrorKind::InvalidData,
+                        "invalid login payload response",
+                    ));
                 }
                 ClientPacketType::LoginAcknowledged => {
                     if login_state != LoginState::LoginAck {
-                        return Err(IOError::new(IOErrorKind::InvalidData, format!("Received login acknowledge in {:?} state", login_state)));
+                        return Err(IOError::new(
+                            IOErrorKind::InvalidData,
+                            format!("Received login acknowledge in {:?} state", login_state),
+                        ));
                     }
                     return Ok(ProxyingData {
                         version,
@@ -308,19 +506,33 @@ async fn handle_login(stream: &mut TcpStream, handshake: Handshake, buffer: &mut
                     });
                 }
                 ClientPacketType::CookieResponse => {
-                    return Err(IOError::new(IOErrorKind::InvalidData, "invalid cookie response"));
+                    return Err(IOError::new(
+                        IOErrorKind::InvalidData,
+                        "invalid cookie response",
+                    ));
                 }
                 _ => {
-                    return Err(IOError::new(IOErrorKind::InvalidData, format!("Bad login packet id={}", id)));
+                    return Err(IOError::new(
+                        IOErrorKind::InvalidData,
+                        format!("Bad login packet id={}", id),
+                    ));
                 }
             }
         } else {
-            return Err(IOError::new(IOErrorKind::InvalidData, format!("Bad login packet id={}", id)));
+            return Err(IOError::new(
+                IOErrorKind::InvalidData,
+                format!("Bad login packet id={}", id),
+            ));
         }
     }
 }
 
-async fn send_encryption(stream: &mut TcpStream, version: i32, compression: i32, buffers: WriteBuffers<'_>) -> IOResult<(String, [u8; 6])> {
+async fn send_encryption(
+    stream: &mut TcpStream,
+    version: i32,
+    compression: i32,
+    buffers: WriteBuffers<'_>,
+) -> IOResult<(String, [u8; 6])> {
     buffers.write_buf.clear();
     buffers.protocol_buf.clear();
     let mut server_id = [0u8; 6];
@@ -329,31 +541,80 @@ async fn send_encryption(stream: &mut TcpStream, version: i32, compression: i32,
 
     let mut verify_token = [0u8; 6];
     rand::thread_rng().fill_bytes(&mut verify_token);
-    packets::get_full_server_packet_buf_write_buffer(buffers.write_buf, &EncryptionRequest {
-        server_id: server_id.clone(),
-        should_authenticate: ProxyServer::instance().config().online_mode,
-        verify_token: verify_token.to_vec(),
-        public_key: ProxyServer::instance().rsa_public_key().to_public_key_der().unwrap().into_vec(),
-    }, version, ProtocolState::Login)?;
-    encode_and_send_packet(stream, buffers.write_buf, buffers.protocol_buf, compression, &mut None).await?;
+    packets::get_full_server_packet_buf_write_buffer(
+        buffers.write_buf,
+        &EncryptionRequest {
+            server_id: server_id.clone(),
+            should_authenticate: ProxyServer::instance().config().online_mode,
+            verify_token: verify_token.to_vec(),
+            public_key: ProxyServer::instance()
+                .rsa_public_key()
+                .to_public_key_der()
+                .unwrap()
+                .into_vec(),
+        },
+        version,
+        ProtocolState::Login,
+    )?;
+    encode_and_send_packet(
+        stream,
+        buffers.write_buf,
+        buffers.protocol_buf,
+        compression,
+        &mut None,
+    )
+    .await?;
 
     Ok((server_id, verify_token))
 }
 
-async fn finish_login(stream: &mut TcpStream, profile: GameProfile, version: i32, buffers: WriteBuffers<'_>, compression: &mut i32, encryption: &mut Option<PacketEncryption>) -> IOResult<GameProfile> {
+async fn finish_login(
+    stream: &mut TcpStream,
+    profile: GameProfile,
+    version: i32,
+    buffers: WriteBuffers<'_>,
+    compression: &mut i32,
+    encryption: &mut Option<PacketEncryption>,
+) -> IOResult<GameProfile> {
     buffers.write_buf.clear();
     buffers.protocol_buf.clear();
     *compression = ProxyServer::instance().config().compression_threshold;
     if *compression >= 0 {
-        packets::get_full_server_packet_buf_write_buffer(buffers.write_buf, &SetCompression {
-            compression: *compression
-        }, version, ProtocolState::Login)?;
-        encode_and_send_packet(stream, buffers.write_buf, buffers.protocol_buf, -1, encryption).await?;
+        packets::get_full_server_packet_buf_write_buffer(
+            buffers.write_buf,
+            &SetCompression {
+                compression: *compression,
+            },
+            version,
+            ProtocolState::Login,
+        )?;
+        encode_and_send_packet(
+            stream,
+            buffers.write_buf,
+            buffers.protocol_buf,
+            -1,
+            encryption,
+        )
+        .await?;
     }
 
     buffers.write_buf.clear();
     buffers.protocol_buf.clear();
-    packets::get_full_server_packet_buf_write_buffer(buffers.write_buf, &LoginSuccess { profile: profile.clone() }, version, ProtocolState::Login)?;
-    encode_and_send_packet(stream, buffers.write_buf, buffers.protocol_buf, *compression, encryption).await?;
+    packets::get_full_server_packet_buf_write_buffer(
+        buffers.write_buf,
+        &LoginSuccess {
+            profile: profile.clone(),
+        },
+        version,
+        ProtocolState::Login,
+    )?;
+    encode_and_send_packet(
+        stream,
+        buffers.write_buf,
+        buffers.protocol_buf,
+        *compression,
+        encryption,
+    )
+    .await?;
     Ok(profile)
 }

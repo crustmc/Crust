@@ -9,25 +9,28 @@ use super::*;
 
 fn serialize_style0(style: &Style, map: &mut Map<String, Value>) {
     if let Some(color) = style.color {
-        map.insert("color".to_string(), Value::String(match color {
-            TextColor::Black => "black".to_string(),
-            TextColor::DarkBlue => "dark_blue".to_string(),
-            TextColor::DarkGreen => "dark_green".to_string(),
-            TextColor::DarkAqua => "dark_aqua".to_string(),
-            TextColor::DarkRed => "dark_red".to_string(),
-            TextColor::DarkPurple => "dark_purple".to_string(),
-            TextColor::Gold => "gold".to_string(),
-            TextColor::Gray => "gray".to_string(),
-            TextColor::DarkGray => "dark_gray".to_string(),
-            TextColor::Blue => "blue".to_string(),
-            TextColor::Green => "green".to_string(),
-            TextColor::Aqua => "aqua".to_string(),
-            TextColor::Red => "red".to_string(),
-            TextColor::LightPurple => "light_purple".to_string(),
-            TextColor::Yellow => "yellow".to_string(),
-            TextColor::White => "white".to_string(),
-            TextColor::Hex(color) => format!("#{:06X}", color),
-        }));
+        map.insert(
+            "color".to_string(),
+            Value::String(match color {
+                TextColor::Black => "black".to_string(),
+                TextColor::DarkBlue => "dark_blue".to_string(),
+                TextColor::DarkGreen => "dark_green".to_string(),
+                TextColor::DarkAqua => "dark_aqua".to_string(),
+                TextColor::DarkRed => "dark_red".to_string(),
+                TextColor::DarkPurple => "dark_purple".to_string(),
+                TextColor::Gold => "gold".to_string(),
+                TextColor::Gray => "gray".to_string(),
+                TextColor::DarkGray => "dark_gray".to_string(),
+                TextColor::Blue => "blue".to_string(),
+                TextColor::Green => "green".to_string(),
+                TextColor::Aqua => "aqua".to_string(),
+                TextColor::Red => "red".to_string(),
+                TextColor::LightPurple => "light_purple".to_string(),
+                TextColor::Yellow => "yellow".to_string(),
+                TextColor::White => "white".to_string(),
+                TextColor::Hex(color) => format!("#{:06X}", color),
+            }),
+        );
     }
     if let Some(bold) = style.bold {
         map.insert("bold".to_string(), Value::Bool(bold));
@@ -45,7 +48,10 @@ fn serialize_style0(style: &Style, map: &mut Map<String, Value>) {
         map.insert("obfuscated".to_string(), Value::Bool(obfuscated));
     }
     if let Some(shadow) = style.shadow_color {
-        map.insert("shadow_color".to_string(), Value::Number(Number::from(shadow as i32)));
+        map.insert(
+            "shadow_color".to_string(),
+            Value::Number(Number::from(shadow as i32)),
+        );
     }
 }
 
@@ -54,16 +60,27 @@ fn serialize_content_into(text: &Text, map: &mut Map<String, Value>) {
         TextContent::Literal(text) => {
             map.insert("text".to_string(), text.clone().into());
         }
-        TextContent::Translation { key, fallback, with } => {
+        TextContent::Translation {
+            key,
+            fallback,
+            with,
+        } => {
             map.insert("translate".to_string(), key.clone().into());
             if let Some(fallback) = fallback {
                 map.insert("fallback".to_string(), fallback.clone().into());
             }
             if let Some(with) = with {
-                map.insert("with".to_string(), Value::Array(with.iter().map(serialize_json).collect()));
+                map.insert(
+                    "with".to_string(),
+                    Value::Array(with.iter().map(serialize_json).collect()),
+                );
             }
         }
-        TextContent::Score { name, objective, value } => {
+        TextContent::Score {
+            name,
+            objective,
+            value,
+        } => {
             let mut score_map = Map::new();
             score_map.insert("name".to_string(), Value::String(name.clone()));
             score_map.insert("objective".to_string(), Value::String(objective.clone()));
@@ -72,7 +89,10 @@ fn serialize_content_into(text: &Text, map: &mut Map<String, Value>) {
             }
             map.insert("score".to_string(), Value::Object(score_map));
         }
-        TextContent::EntitySelector { selector, separator } => {
+        TextContent::EntitySelector {
+            selector,
+            separator,
+        } => {
             map.insert("selector".to_string(), Value::String(selector.clone()));
             if let Some(separator) = separator {
                 map.insert("separator".to_string(), serialize_json(separator));
@@ -81,7 +101,14 @@ fn serialize_content_into(text: &Text, map: &mut Map<String, Value>) {
         TextContent::Keybind(key) => {
             map.insert("keybind".to_string(), Value::String(key.clone()));
         }
-        TextContent::Nbt { nbt, interpret, separator, block, entity, storage } => {
+        TextContent::Nbt {
+            nbt,
+            interpret,
+            separator,
+            block,
+            entity,
+            storage,
+        } => {
             map.insert("nbt".to_string(), Value::String(nbt.clone()));
             if let Some(interpret) = interpret {
                 map.insert("interpret".to_string(), Value::Bool(*interpret));
@@ -110,8 +137,12 @@ pub fn serialize_style(style: &Style) -> Value {
 
 pub fn serialize_json(text: &Text) -> Value {
     if let TextContent::Literal(str) = &text.content {
-        if text.style.is_empty() && text.insertion.is_none()
-            && text.click_event.is_none() && text.hover_event.is_none() && text.extra.is_empty() {
+        if text.style.is_empty()
+            && text.insertion.is_none()
+            && text.click_event.is_none()
+            && text.hover_event.is_none()
+            && text.extra.is_empty()
+        {
             return Value::String(str.clone());
         }
     }
@@ -120,56 +151,66 @@ pub fn serialize_json(text: &Text) -> Value {
     serialize_style0(&text.style, &mut map);
 
     if let Some(ref event) = text.click_event {
-        map.insert("clickEvent".to_string(), serde_json::json!({
-            "action": match event.action {
-                ClickAction::OpenUrl => "open_url",
-                ClickAction::OpenFile => "open_file",
-                ClickAction::RunCommand => "run_command",
-                ClickAction::SuggestCommand => "suggest_command",
-                ClickAction::ChangePage => "change_page",
-                ClickAction::CopyToClipboard => "copy_to_clipboard",
-                ClickAction::Unresolved(ref action) => action,
-            }.to_string(),
-            "value": event.value,
-        }));
+        map.insert(
+            "clickEvent".to_string(),
+            serde_json::json!({
+                "action": match event.action {
+                    ClickAction::OpenUrl => "open_url",
+                    ClickAction::OpenFile => "open_file",
+                    ClickAction::RunCommand => "run_command",
+                    ClickAction::SuggestCommand => "suggest_command",
+                    ClickAction::ChangePage => "change_page",
+                    ClickAction::CopyToClipboard => "copy_to_clipboard",
+                    ClickAction::Unresolved(ref action) => action,
+                }.to_string(),
+                "value": event.value,
+            }),
+        );
     }
     if let Some(ref event) = text.hover_event {
-        map.insert("hoverEvent".to_string(), match event {
-            HoverEvent::ShowText(text) => serde_json::json!({
-                "action": "show_text",
-                "contents": serialize_json(text),
-            }),
-            HoverEvent::ShowItem { id, count, tag } => {
-                let mut map = Map::new();
-                map.insert("id".to_string(), Value::String(id.clone()));
-                if let Some(count) = count {
-                    map.insert("count".to_string(), Value::Number(Number::from(*count)));
+        map.insert(
+            "hoverEvent".to_string(),
+            match event {
+                HoverEvent::ShowText(text) => serde_json::json!({
+                    "action": "show_text",
+                    "contents": serialize_json(text),
+                }),
+                HoverEvent::ShowItem { id, count, tag } => {
+                    let mut map = Map::new();
+                    map.insert("id".to_string(), Value::String(id.clone()));
+                    if let Some(count) = count {
+                        map.insert("count".to_string(), Value::Number(Number::from(*count)));
+                    }
+                    if let Some(tag) = tag {
+                        map.insert("tag".to_string(), Value::String(tag.clone()));
+                    }
+                    serde_json::json!({
+                        "action": "show_item",
+                        "contents": map,
+                    })
                 }
-                if let Some(tag) = tag {
-                    map.insert("tag".to_string(), Value::String(tag.clone()));
+                HoverEvent::ShowEntity {
+                    id,
+                    name,
+                    entity_type,
+                } => {
+                    let mut map = Map::new();
+                    map.insert("id".to_string(), Value::String(id.clone()));
+                    map.insert("type".to_string(), Value::String(entity_type.clone()));
+                    if let Some(name) = name {
+                        map.insert("name".to_string(), Value::String(name.clone()));
+                    }
+                    serde_json::json!({
+                        "action": "show_entity",
+                        "contents": map,
+                    })
                 }
-                serde_json::json!({
-                    "action": "show_item",
-                    "contents": map,
-                })
-            }
-            HoverEvent::ShowEntity { id, name, entity_type } => {
-                let mut map = Map::new();
-                map.insert("id".to_string(), Value::String(id.clone()));
-                map.insert("type".to_string(), Value::String(entity_type.clone()));
-                if let Some(name) = name {
-                    map.insert("name".to_string(), Value::String(name.clone()));
-                }
-                serde_json::json!({
-                    "action": "show_entity",
-                    "contents": map,
-                })
-            }
-            HoverEvent::Unresolved { action, value } => serde_json::json!({
-                "action": action,
-                "value": value,
-            }),
-        });
+                HoverEvent::Unresolved { action, value } => serde_json::json!({
+                    "action": action,
+                    "value": value,
+                }),
+            },
+        );
     }
     if let Some(ref insertion) = text.insertion {
         map.insert("insertion".to_string(), Value::String(insertion.clone()));
@@ -190,7 +231,9 @@ pub fn serialize_json(text: &Text) -> Value {
                 });
             }
         }
-        Value::Array((std::iter::once(value).chain(text.extra.iter().map(serialize_json))).collect())
+        Value::Array(
+            (std::iter::once(value).chain(text.extra.iter().map(serialize_json))).collect(),
+        )
     } else {
         value
     }
@@ -261,7 +304,8 @@ fn deserialize_style0(map: &Map<String, Value>) -> Result<Style> {
             "white" => TextColor::White,
             color => {
                 if color.len() == 7 && color.starts_with('#') {
-                    let color = u32::from_str_radix(&color[1..], 16).map_err(|_| DeserializationError::InvalidColorFormat)?;
+                    let color = u32::from_str_radix(&color[1..], 16)
+                        .map_err(|_| DeserializationError::InvalidColorFormat)?;
                     TextColor::Hex(color)
                 } else {
                     return Err(DeserializationError::InvalidColorFormat);
@@ -270,7 +314,9 @@ fn deserialize_style0(map: &Map<String, Value>) -> Result<Style> {
         });
     }
     style.font = map.get("font").and_then(|v| v.as_str().map(String::from));
-    style.shadow_color = map.get("shadow_color").and_then(|v| v.as_i64().map(|v| v as u32));
+    style.shadow_color = map
+        .get("shadow_color")
+        .and_then(|v| v.as_i64().map(|v| v as u32));
     style.bold = map.get("bold").and_then(|v| v.as_bool());
     style.italic = map.get("italic").and_then(|v| v.as_bool());
     style.underlined = map.get("underlined").map(|v| v.as_bool()).flatten();
@@ -295,8 +341,17 @@ fn deserialize_content(map: &Map<String, Value>) -> Result<TextContent> {
             _ => return Err(DeserializationError::InvalidValueType),
         }
     }
-    if let Some(translate) = map.get("translate").map(|v| v.as_str()).flatten().map(String::from) {
-        let fallback = map.get("fallback").map(|v| v.as_str()).flatten().map(String::from);
+    if let Some(translate) = map
+        .get("translate")
+        .map(|v| v.as_str())
+        .flatten()
+        .map(String::from)
+    {
+        let fallback = map
+            .get("fallback")
+            .map(|v| v.as_str())
+            .flatten()
+            .map(String::from);
         let with = if let Some(list) = map.get("with").map(|v| v.as_array()).flatten() {
             let mut with = Vec::new();
             for value in list {
@@ -306,28 +361,81 @@ fn deserialize_content(map: &Map<String, Value>) -> Result<TextContent> {
         } else {
             None
         };
-        return Ok(TextContent::Translation { key: translate, fallback, with });
+        return Ok(TextContent::Translation {
+            key: translate,
+            fallback,
+            with,
+        });
     }
-    if let Some(keybind) = map.get("keybind").map(|v| v.as_str()).flatten().map(String::from).map(TextContent::Keybind) {
+    if let Some(keybind) = map
+        .get("keybind")
+        .map(|v| v.as_str())
+        .flatten()
+        .map(String::from)
+        .map(TextContent::Keybind)
+    {
         return Ok(keybind);
     }
     if let Some(map) = map.get("score").map(|v| v.as_object()).flatten() {
-        let name = map.get("name").map(|v| v.as_str()).flatten().map(String::from).ok_or(DeserializationError::MissingScoreName)?;
-        let objective = map.get("objective").map(|v| v.as_str()).flatten().map(String::from).ok_or(DeserializationError::MissingScoreObjective)?;
-        let value = map.get("value").map(|v| v.as_str()).flatten().map(String::from);
-        return Ok(TextContent::Score { name, objective, value });
+        let name = map
+            .get("name")
+            .map(|v| v.as_str())
+            .flatten()
+            .map(String::from)
+            .ok_or(DeserializationError::MissingScoreName)?;
+        let objective = map
+            .get("objective")
+            .map(|v| v.as_str())
+            .flatten()
+            .map(String::from)
+            .ok_or(DeserializationError::MissingScoreObjective)?;
+        let value = map
+            .get("value")
+            .map(|v| v.as_str())
+            .flatten()
+            .map(String::from);
+        return Ok(TextContent::Score {
+            name,
+            objective,
+            value,
+        });
     }
-    if let Some(selector) = map.get("selector").map(|v| v.as_str()).flatten().map(String::from) {
+    if let Some(selector) = map
+        .get("selector")
+        .map(|v| v.as_str())
+        .flatten()
+        .map(String::from)
+    {
         let separator = match map.get("separator") {
             Some(s) => Some(Box::new(deserialize_json(s)?)),
             None => None,
         };
-        return Ok(TextContent::EntitySelector { selector, separator });
+        return Ok(TextContent::EntitySelector {
+            selector,
+            separator,
+        });
     }
-    if let Some(nbt) = map.get("nbt").map(|v| v.as_str()).flatten().map(String::from) {
-        let block = map.get("block").map(|v| v.as_str()).flatten().map(String::from);
-        let entity = map.get("entity").map(|v| v.as_str()).flatten().map(String::from);
-        let storage = map.get("storage").map(|v| v.as_str()).flatten().map(String::from);
+    if let Some(nbt) = map
+        .get("nbt")
+        .map(|v| v.as_str())
+        .flatten()
+        .map(String::from)
+    {
+        let block = map
+            .get("block")
+            .map(|v| v.as_str())
+            .flatten()
+            .map(String::from);
+        let entity = map
+            .get("entity")
+            .map(|v| v.as_str())
+            .flatten()
+            .map(String::from);
+        let storage = map
+            .get("storage")
+            .map(|v| v.as_str())
+            .flatten()
+            .map(String::from);
         let interpret = map.get("interpret").map(|v| v.as_bool()).flatten();
         let separator = match map.get("separator") {
             Some(s) => Some(Box::new(deserialize_json(s)?)),
@@ -336,7 +444,14 @@ fn deserialize_content(map: &Map<String, Value>) -> Result<TextContent> {
         if entity.is_none() && block.is_none() && storage.is_none() {
             return Err(DeserializationError::MissingNbtTarget);
         }
-        return Ok(TextContent::Nbt { nbt, interpret, separator, block, entity, storage });
+        return Ok(TextContent::Nbt {
+            nbt,
+            interpret,
+            separator,
+            block,
+            entity,
+            storage,
+        });
     }
     Err(DeserializationError::CouldNotIdentifyContentType)
 }
@@ -378,31 +493,60 @@ pub fn deserialize_json(value: &Value) -> Result<Text> {
                         },
                         None => return Err(DeserializationError::MissingClickEventAction),
                     };
-                    let value = map.get("value").map(|v| v.as_str()).flatten().map(String::from).ok_or(DeserializationError::MissingClickEventValue)?;
+                    let value = map
+                        .get("value")
+                        .map(|v| v.as_str())
+                        .flatten()
+                        .map(String::from)
+                        .ok_or(DeserializationError::MissingClickEventValue)?;
                     Some(ClickEvent { action, value })
                 }
                 None => None,
             };
             let hover_event = match obj.get("hoverEvent").map(|v| v.as_object()).flatten() {
-                Some(map) => {
-                    Some(match map.get("action").map(|v| v.as_str()).flatten() {
-                        Some(action) => {
-                            let contents_value = map.get("contents");
-                            if let Some(contents) = contents_value.map(|v| v.as_object()).flatten() {
-                                let contents_value = contents_value.unwrap();
-                                match action {
-                                    "show_text" => HoverEvent::ShowText(Box::new(deserialize_json(contents_value)?)),
-                                    "show_item" => {
-                                        let id = contents.get("id").map(|v| v.as_str()).flatten().map(String::from).ok_or(DeserializationError::MissingHoverEventValue)?;
-                                        let count = contents.get("count").map(|v| v.as_i64()).flatten().map(|v| v as i32);
-                                        let tag = contents.get("tag").map(|v| v.as_str()).flatten().map(String::from);
-                                        HoverEvent::ShowItem { id, count, tag }
-                                    }
-                                    "show_entity" => {
-                                        let name = contents.get("name").map(|v| v.as_str()).flatten().map(String::from);
-                                        let entity_type = contents.get("type").map(|v| v.as_str()).flatten().map(String::from).ok_or(DeserializationError::MissingHoverEventValue)?;
-                                        let id = match contents.get("id") {
-                                            Some(id) => match id {
+                Some(map) => Some(match map.get("action").map(|v| v.as_str()).flatten() {
+                    Some(action) => {
+                        let contents_value = map.get("contents");
+                        if let Some(contents) = contents_value.map(|v| v.as_object()).flatten() {
+                            let contents_value = contents_value.unwrap();
+                            match action {
+                                "show_text" => HoverEvent::ShowText(Box::new(deserialize_json(
+                                    contents_value,
+                                )?)),
+                                "show_item" => {
+                                    let id = contents
+                                        .get("id")
+                                        .map(|v| v.as_str())
+                                        .flatten()
+                                        .map(String::from)
+                                        .ok_or(DeserializationError::MissingHoverEventValue)?;
+                                    let count = contents
+                                        .get("count")
+                                        .map(|v| v.as_i64())
+                                        .flatten()
+                                        .map(|v| v as i32);
+                                    let tag = contents
+                                        .get("tag")
+                                        .map(|v| v.as_str())
+                                        .flatten()
+                                        .map(String::from);
+                                    HoverEvent::ShowItem { id, count, tag }
+                                }
+                                "show_entity" => {
+                                    let name = contents
+                                        .get("name")
+                                        .map(|v| v.as_str())
+                                        .flatten()
+                                        .map(String::from);
+                                    let entity_type = contents
+                                        .get("type")
+                                        .map(|v| v.as_str())
+                                        .flatten()
+                                        .map(String::from)
+                                        .ok_or(DeserializationError::MissingHoverEventValue)?;
+                                    let id = match contents.get("id") {
+                                        Some(id) => {
+                                            match id {
                                                 Value::String(s) => s.clone(),
                                                 Value::Array(array) => {
                                                     if array.len() != 4 {
@@ -415,27 +559,42 @@ pub fn deserialize_json(value: &Value) -> Result<Text> {
                                                     let v1 = array[1].as_i64().unwrap() as u32;
                                                     let v2 = array[2].as_i64().unwrap() as u32;
                                                     let v3 = array[3].as_i64().unwrap() as u32;
-                                                    let p0 = (v0 as u64) << 32 | (v1 as u64 & 0xFFFFFFFFu64);
-                                                    let p1 = (v2 as u64) << 32 | (v3 as u64 & 0xFFFFFFFFu64);
+                                                    let p0 = (v0 as u64) << 32
+                                                        | (v1 as u64 & 0xFFFFFFFFu64);
+                                                    let p1 = (v2 as u64) << 32
+                                                        | (v3 as u64 & 0xFFFFFFFFu64);
                                                     Uuid::from_u64_pair(p0, p1).to_string()
                                                 }
-                                                _ => return Err(DeserializationError::MalformedHoverEventValue),
-                                            },
-                                            None => return Err(DeserializationError::MissingHoverEventValue),
-                                        };
-                                        HoverEvent::ShowEntity { id, name, entity_type }
+                                                _ => return Err(
+                                                    DeserializationError::MalformedHoverEventValue,
+                                                ),
+                                            }
+                                        }
+                                        None => {
+                                            return Err(
+                                                DeserializationError::MissingHoverEventValue,
+                                            )
+                                        }
+                                    };
+                                    HoverEvent::ShowEntity {
+                                        id,
+                                        name,
+                                        entity_type,
                                     }
-                                    _ => return Err(DeserializationError::InvalidHoverEventAction),
                                 }
-                            } else if let Some(value) = map.get("value").map(|v| v.as_str()).flatten() {
-                                HoverEvent::Unresolved { action: action.to_string(), value: value.to_string() }
-                            } else {
-                                return Err(DeserializationError::MissingHoverEventValue);
+                                _ => return Err(DeserializationError::InvalidHoverEventAction),
                             }
+                        } else if let Some(value) = map.get("value").map(|v| v.as_str()).flatten() {
+                            HoverEvent::Unresolved {
+                                action: action.to_string(),
+                                value: value.to_string(),
+                            }
+                        } else {
+                            return Err(DeserializationError::MissingHoverEventValue);
                         }
-                        None => return Err(DeserializationError::InvalidValueType),
-                    })
-                }
+                    }
+                    None => return Err(DeserializationError::InvalidValueType),
+                }),
                 None => None,
             };
             let mut extra = Vec::new();
@@ -445,7 +604,11 @@ pub fn deserialize_json(value: &Value) -> Result<Text> {
                 }
             }
 
-            let insertion = obj.get("insertion").map(|v| v.as_str()).flatten().map(String::from);
+            let insertion = obj
+                .get("insertion")
+                .map(|v| v.as_str())
+                .flatten()
+                .map(String::from);
             let content = deserialize_content(obj)?;
             Ok(Text {
                 style,
@@ -456,15 +619,9 @@ pub fn deserialize_json(value: &Value) -> Result<Text> {
                 content,
             })
         }
-        Value::String(str) => {
-            Ok(str.clone().into())
-        }
-        Value::Bool(b) => {
-            Ok(b.to_string().into())
-        }
-        Value::Number(n) => {
-            Ok(n.to_string().into())
-        }
+        Value::String(str) => Ok(str.clone().into()),
+        Value::Bool(b) => Ok(b.to_string().into()),
+        Value::Number(n) => Ok(n.to_string().into()),
         _ => Err(DeserializationError::InvalidValueType),
     }
 }

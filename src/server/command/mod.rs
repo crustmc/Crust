@@ -1,13 +1,14 @@
 use std::collections::HashMap;
 
-use crate::{chat::Text, util::WeakHandle};
-use crate::chat::{Style, TextBuilder, TextColor};
 use super::{brigadier::Suggestions, ProxiedPlayer, ProxyServer};
+use crate::chat::{Style, TextBuilder, TextColor};
+use crate::{chat::Text, util::WeakHandle};
 
 pub(crate) mod core_impl;
 
 pub type CommandExecutor = fn(sender: &CommandSender, name: &str, args: Vec<&str>);
-pub type CommandTabCompleter = fn(sender: &CommandSender, name: &str, args: Vec<&str>, &mut Suggestions);
+pub type CommandTabCompleter =
+    fn(sender: &CommandSender, name: &str, args: Vec<&str>, &mut Suggestions);
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum CommandArgType {
@@ -29,19 +30,16 @@ pub struct CommandInfo {
 }
 
 impl CommandInfo {
-
     pub fn name(&self) -> &str {
         &self.names[0]
     }
 }
 
 pub trait CommandNames {
-
     fn names(self) -> impl Iterator<Item = String>;
 }
 
 impl<S: Into<String>, I: IntoIterator<Item = S>> CommandNames for I {
-
     fn names(self) -> impl Iterator<Item = String> {
         self.into_iter().map(|s| s.into())
     }
@@ -52,7 +50,6 @@ pub struct CommandRegistryBuilder {
 }
 
 impl CommandRegistryBuilder {
-
     pub fn new() -> Self {
         Self {
             commands: Vec::new(),
@@ -63,12 +60,22 @@ impl CommandRegistryBuilder {
         name.chars().all(|c| c.is_alphanumeric() || c == '_')
     }
 
-    pub fn add_core_command<N: CommandNames, P: Into<String>, D: Into<String>>(&mut self, names: N, arg_type: CommandArgType,
-        executor: CommandExecutor, tab_completer: Option<CommandTabCompleter>, permission: P, description: D) {
+    pub fn add_core_command<N: CommandNames, P: Into<String>, D: Into<String>>(
+        &mut self,
+        names: N,
+        arg_type: CommandArgType,
+        executor: CommandExecutor,
+        tab_completer: Option<CommandTabCompleter>,
+        permission: P,
+        description: D,
+    ) {
         let mut names = names.names().collect::<Vec<String>>();
         for i in 0..names.len() {
             if !Self::is_name_valid(&names[i]) {
-                panic!("Failed to register core command! {}th name contains invalid characters: {}", i, names[i]);
+                panic!(
+                    "Failed to register core command! {}th name contains invalid characters: {}",
+                    i, names[i]
+                );
             }
             names.push(format!("crust:{}", names[i]));
         }
@@ -82,15 +89,29 @@ impl CommandRegistryBuilder {
         });
     }
 
-    pub fn core_command<N: CommandNames, P: Into<String>, D: Into<String>>(mut self, names: N, arg_type: CommandArgType,
-        executor: CommandExecutor, tab_completer: Option<CommandTabCompleter>, permission: P, description: D) -> Self {
-        self.add_core_command(names, arg_type, executor, tab_completer, permission, description);
+    pub fn core_command<N: CommandNames, P: Into<String>, D: Into<String>>(
+        mut self,
+        names: N,
+        arg_type: CommandArgType,
+        executor: CommandExecutor,
+        tab_completer: Option<CommandTabCompleter>,
+        permission: P,
+        description: D,
+    ) -> Self {
+        self.add_core_command(
+            names,
+            arg_type,
+            executor,
+            tab_completer,
+            permission,
+            description,
+        );
         self
     }
 
     pub fn build(self) -> CommandRegistry {
         CommandRegistry::new(self.commands)
-    } 
+    }
 }
 
 pub struct CommandRegistry {
@@ -99,7 +120,6 @@ pub struct CommandRegistry {
 }
 
 impl CommandRegistry {
-
     fn new(commands: Vec<CommandInfo>) -> Self {
         let mut commands_by_name = HashMap::new();
         for (index, command) in commands.iter().enumerate() {
@@ -118,7 +138,9 @@ impl CommandRegistry {
     }
 
     pub fn get_command_by_name(&self, name: &str) -> Option<&CommandInfo> {
-        self.commands_by_name.get(name).map(|index| &self.commands[*index])
+        self.commands_by_name
+            .get(name)
+            .map(|index| &self.commands[*index])
     }
 
     pub fn execute(&self, sender: &CommandSender, command: &str) -> bool {
@@ -129,12 +151,22 @@ impl CommandRegistry {
         let name = parts.next().unwrap();
         self.get_command_by_name(name).map_or(false, |info| {
             if !sender.has_permission(info.permission.as_str()) {
-                sender.send_message(TextBuilder::new("You do not have permission to run this command!").style(Style::empty().with_color(TextColor::Red)).build());
+                sender.send_message(
+                    TextBuilder::new("You do not have permission to run this command!")
+                        .style(Style::empty().with_color(TextColor::Red))
+                        .build(),
+                );
                 return true;
             }
             let args = parts.next().unwrap_or("");
             let args = match info.arg_type {
-                CommandArgType::TextSplitBySpace => if args.is_empty() { vec![] } else { args.split_ascii_whitespace().collect::<Vec<&str>>() },
+                CommandArgType::TextSplitBySpace => {
+                    if args.is_empty() {
+                        vec![]
+                    } else {
+                        args.split_ascii_whitespace().collect::<Vec<&str>>()
+                    }
+                }
                 CommandArgType::Args0ContainsEverything => vec![command, args],
             };
             (info.executor)(sender, name, args);
@@ -142,23 +174,34 @@ impl CommandRegistry {
         })
     }
 
-    pub fn tab_complete(&self, sender: &CommandSender, command: &str) -> Option<Option<Suggestions>> {
+    pub fn tab_complete(
+        &self,
+        sender: &CommandSender,
+        command: &str,
+    ) -> Option<Option<Suggestions>> {
         if command.is_empty() {
             return None;
         }
         let mut parts = command.splitn(2, ' ');
         let name = parts.next().unwrap();
         self.get_command_by_name(name).map_or(None, |info| {
-
             if !sender.has_permission(info.permission.as_str()) {
                 return Some(None);
             }
-            
-            let mut suggestions = Suggestions { start: 0, length: 0, matches: Vec::new() };
+
+            let mut suggestions = Suggestions {
+                start: 0,
+                length: 0,
+                matches: Vec::new(),
+            };
             let args = parts.next().unwrap_or("");
             let args = match info.arg_type {
                 CommandArgType::TextSplitBySpace => {
-                    let mut splitted = if args.is_empty() { vec![] } else { args.split_ascii_whitespace().collect::<Vec<&str>>() };
+                    let mut splitted = if args.is_empty() {
+                        vec![]
+                    } else {
+                        args.split_ascii_whitespace().collect::<Vec<&str>>()
+                    };
                     if command.ends_with(" ") {
                         suggestions.start = command.len() as i32 + 1;
                         suggestions.length = 0;
@@ -177,7 +220,7 @@ impl CommandRegistry {
                         suggestions.length = len as i32;
                     }
                     splitted
-                },
+                }
                 CommandArgType::Args0ContainsEverything => vec![command, args],
             };
             if let Some(ref completer) = info.tab_completer {
@@ -196,7 +239,6 @@ pub enum CommandSender {
 }
 
 impl CommandSender {
-
     pub fn is_console(&self) -> bool {
         match self {
             CommandSender::Console => true,
@@ -229,7 +271,7 @@ impl CommandSender {
                 if let Some(player) = player.upgrade() {
                     let _ = player.send_message(message).await;
                 }
-            },
+            }
         }
     }
 

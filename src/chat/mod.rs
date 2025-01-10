@@ -30,7 +30,7 @@ impl Text {
         self.extra.push(extra.into());
     }
 
-    pub fn add_extras<T: Into<Text>, E: IntoIterator<Item=T>>(&mut self, extras: E) {
+    pub fn add_extras<T: Into<Text>, E: IntoIterator<Item = T>>(&mut self, extras: E) {
         self.extra.extend(extras.into_iter().map(Into::into));
     }
 
@@ -60,7 +60,6 @@ impl Text {
 }
 
 impl Display for Text {
-
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.get_string())
     }
@@ -81,9 +80,20 @@ impl From<TextBuilder> for Text {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TextContent {
     Literal(String),
-    Translation { key: String, fallback: Option<String>, with: Option<Vec<Text>> },
-    Score { name: String, objective: String, value: Option<String> },
-    EntitySelector { selector: String, separator: Option<Box<Text>> },
+    Translation {
+        key: String,
+        fallback: Option<String>,
+        with: Option<Vec<Text>>,
+    },
+    Score {
+        name: String,
+        objective: String,
+        value: Option<String>,
+    },
+    EntitySelector {
+        selector: String,
+        separator: Option<Box<Text>>,
+    },
     Keybind(String),
     Nbt {
         nbt: String,
@@ -101,24 +111,48 @@ impl TextContent {
     }
 
     pub fn translation(key: String, fallback: Option<String>, with: Option<Vec<Text>>) -> Self {
-        TextContent::Translation { key, fallback, with }
+        TextContent::Translation {
+            key,
+            fallback,
+            with,
+        }
     }
 
     pub fn score(name: String, objective: String, value: Option<String>) -> Self {
-        TextContent::Score { name, objective, value }
+        TextContent::Score {
+            name,
+            objective,
+            value,
+        }
     }
 
     pub fn entity_selector(selector: String, separator: Option<Text>) -> Self {
-        TextContent::EntitySelector { selector, separator: separator.map(Box::new) }
+        TextContent::EntitySelector {
+            selector,
+            separator: separator.map(Box::new),
+        }
     }
 
     pub fn keybind(key: String) -> Self {
         TextContent::Keybind(key)
     }
 
-    pub fn nbt(nbt: String, interpret: Option<bool>, separator: Option<Text>,
-               block: Option<String>, entity: Option<String>, storage: Option<String>) -> Self {
-        TextContent::Nbt { nbt, interpret, separator: separator.map(Box::new), block, entity, storage }
+    pub fn nbt(
+        nbt: String,
+        interpret: Option<bool>,
+        separator: Option<Text>,
+        block: Option<String>,
+        entity: Option<String>,
+        storage: Option<String>,
+    ) -> Self {
+        TextContent::Nbt {
+            nbt,
+            interpret,
+            separator: separator.map(Box::new),
+            block,
+            entity,
+            storage,
+        }
     }
 
     pub fn get_string(&self) -> Option<&String> {
@@ -162,9 +196,20 @@ pub enum ClickAction {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HoverEvent {
     ShowText(Box<Text>),
-    ShowItem { id: String, count: Option<i32>, tag: Option<String> },
-    ShowEntity { id: String, entity_type: String, name: Option<String> },
-    Unresolved { action: String, value: String },
+    ShowItem {
+        id: String,
+        count: Option<i32>,
+        tag: Option<String>,
+    },
+    ShowEntity {
+        id: String,
+        entity_type: String,
+        name: Option<String>,
+    },
+    Unresolved {
+        action: String,
+        value: String,
+    },
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -180,15 +225,18 @@ pub struct Style {
 }
 
 impl Style {
-
     pub fn empty() -> Self {
         Self::default()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.color.is_none() && self.shadow_color.is_none() && self.bold.is_none() &&
-            self.italic.is_none() && self.underlined.is_none() && self.strikethrough.is_none() &&
-            self.obfuscated.is_none()
+        self.color.is_none()
+            && self.shadow_color.is_none()
+            && self.bold.is_none()
+            && self.italic.is_none()
+            && self.underlined.is_none()
+            && self.strikethrough.is_none()
+            && self.obfuscated.is_none()
     }
 
     pub fn with_color<C: Into<TextColor>>(mut self, color: C) -> Self {
@@ -367,12 +415,12 @@ impl TextBuilder {
         self
     }
 
-    pub fn extras<T: Into<Text>, E: IntoIterator<Item=T>>(mut self, extras: E) -> Self {
+    pub fn extras<T: Into<Text>, E: IntoIterator<Item = T>>(mut self, extras: E) -> Self {
         self.inner.extra.extend(extras.into_iter().map(Into::into));
         self
     }
 
-    pub fn add_extras<T: Into<Text>, E: IntoIterator<Item=T>>(&mut self, extras: E) -> &mut Self {
+    pub fn add_extras<T: Into<Text>, E: IntoIterator<Item = T>>(&mut self, extras: E) -> &mut Self {
         self.inner.extra.extend(extras.into_iter().map(Into::into));
         self
     }

@@ -1,6 +1,7 @@
 use std::{
     io::{Read, Write},
-    ops::{Deref, DerefMut}, sync::{Arc, Weak},
+    ops::{Deref, DerefMut},
+    sync::{Arc, Weak},
 };
 
 use byteorder::{ReadBytesExt, WriteBytesExt};
@@ -8,7 +9,10 @@ use either::Either;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use uuid::Uuid;
 
-use crate::{chat::Text, server::{encryption::PacketDecryption, nbt::NbtType}};
+use crate::{
+    chat::Text,
+    server::{encryption::PacketDecryption, nbt::NbtType},
+};
 
 pub type DynError = Box<dyn std::error::Error + Send + Sync>;
 pub type Result<T> = std::result::Result<T, DynError>;
@@ -46,7 +50,6 @@ pub fn is_username_valid(username: &str) -> bool {
 pub struct VarInt(pub i32);
 
 impl VarInt {
-    
     pub fn get(&self) -> i32 {
         self.0
     }
@@ -70,15 +73,15 @@ impl VarInt {
         }
         Ok(Self(out as i32))
     }
-    
+
     pub fn decode_simple<R: Read + ?Sized>(src: &mut R) -> IOResult<Self> {
         Self::decode(src, 5)
     }
-    
+
     pub fn encode_simple<W: Write + ?Sized>(&self, dest: &mut W) -> IOResult<usize> {
         self.encode(dest, 5)
     }
-    
+
     pub fn encode<W: Write + ?Sized>(&self, dest: &mut W, max_bytes: u32) -> IOResult<usize> {
         let max_bytes = max_bytes as usize;
         let mut value = self.0 as u32;
@@ -104,7 +107,7 @@ impl VarInt {
         }
         Ok(bytes)
     }
-    
+
     pub async fn decode_async<R: AsyncRead + Unpin + ?Sized>(
         src: &mut R,
         max_bytes: u32,
@@ -127,7 +130,7 @@ impl VarInt {
         }
         Ok(Self(out as i32))
     }
-    
+
     pub async fn decode_encrypted_async<R: AsyncRead + Unpin + ?Sized>(
         src: &mut R,
         max_bytes: u32,
@@ -154,7 +157,7 @@ impl VarInt {
         }
         Ok(Self(out as i32))
     }
-    
+
     pub async fn encode_async<W: AsyncWrite + Unpin + ?Sized>(
         &self,
         dest: &mut W,
@@ -183,7 +186,7 @@ impl VarInt {
         }
         Ok(bytes as usize)
     }
-    
+
     pub fn get_size(v: i32) -> usize {
         let v = v as u32;
         if (v & 0xFFFFFF80) == 0 {
@@ -204,14 +207,13 @@ impl VarInt {
 
 impl Deref for VarInt {
     type Target = i32;
-    
+
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
 impl DerefMut for VarInt {
-    
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
@@ -221,7 +223,6 @@ impl<T> From<T> for VarInt
 where
     T: Into<i32>,
 {
-
     fn from(value: T) -> Self {
         VarInt(value.into())
     }
@@ -230,15 +231,12 @@ where
 pub struct EncodingHelper(());
 
 impl EncodingHelper {
-    
-
     pub fn write_byte_array<W: Write + ?Sized>(dest: &mut W, data: &[u8]) -> IOResult<()> {
         let len = VarInt(data.len() as i32);
         len.encode(dest, 5)?;
         dest.write_all(data)?;
         Ok(())
     }
-
 
     pub fn read_byte_array<R: Read + ?Sized>(src: &mut R, max_length: usize) -> IOResult<Vec<u8>> {
         let len = VarInt::decode(src, 5)?.get() as usize;
@@ -250,14 +248,12 @@ impl EncodingHelper {
         Ok(data)
     }
 
-
     pub fn write_string<W: Write + ?Sized>(dest: &mut W, data: &str) -> IOResult<()> {
         let data = data.as_bytes();
         VarInt(data.len() as i32).encode_simple(dest)?;
         dest.write_all(data)?;
         Ok(())
     }
-    
 
     pub fn read_string<R: Read + ?Sized>(src: &mut R, max_length: usize) -> IOResult<String> {
         let len = VarInt::decode(src, 5)?.get() as usize;
@@ -278,7 +274,10 @@ impl EncodingHelper {
                     .map_err(|err| IOError::new(IOErrorKind::InvalidData, err));
             }
         }
-        Err(IOError::new(IOErrorKind::InvalidData, "Failed to parse text component: Invalid NBT data!"))
+        Err(IOError::new(
+            IOErrorKind::InvalidData,
+            "Failed to parse text component: Invalid NBT data!",
+        ))
     }
 
     pub fn write_text<W: Write + ?Sized>(dest: &mut W, version: i32, text: &Text) -> IOResult<()> {
@@ -287,13 +286,11 @@ impl EncodingHelper {
         crate::server::nbt::write_networking_nbt(dest, version, &Either::Left(Some(nbt)))?;
         Ok(())
     }
-    
 
     pub fn write_uuid<W: Write + ?Sized>(dest: &mut W, uuid: &Uuid) -> IOResult<()> {
         dest.write_all(uuid.as_bytes())?;
         Ok(())
     }
-    
 
     pub fn read_uuid<R: Read + ?Sized>(src: &mut R) -> IOResult<Uuid> {
         let mut data = [0; 16];
@@ -305,10 +302,11 @@ impl EncodingHelper {
     #[allow(clippy::uninit_vec)]
     pub fn need_read_uninit_vec(len: usize) -> Vec<u8> {
         let mut data = Vec::with_capacity(len);
-        unsafe { data.set_len(len); }
+        unsafe {
+            data.set_len(len);
+        }
         data
     }
-    
 }
 
 pub struct Handle<T> {
@@ -316,41 +314,43 @@ pub struct Handle<T> {
 }
 
 impl<T> Handle<T> {
-
     pub fn new(inner: T) -> Self {
-        Self { inner: Arc::new(inner) }
+        Self {
+            inner: Arc::new(inner),
+        }
     }
 
     pub fn downgrade(&self) -> WeakHandle<T> {
         WeakHandle::new(Arc::downgrade(&self.inner))
     }
-    
+
     #[allow(clippy::mut_from_ref)]
     pub fn get_mut(&self) -> &mut T {
         #[allow(invalid_reference_casting)]
-        unsafe { &mut *core::mem::transmute::<*const T, *mut T>(self.inner.deref() as *const T) }
+        unsafe {
+            &mut *core::mem::transmute::<*const T, *mut T>(self.inner.deref() as *const T)
+        }
     }
 }
 
 #[allow(clippy::from_over_into)]
 impl<T> Into<Arc<T>> for Handle<T> {
-
     fn into(self) -> Arc<T> {
         self.inner
     }
 }
 
 impl<T> From<Arc<T>> for Handle<T> {
-
     fn from(inner: Arc<T>) -> Self {
         Self { inner }
     }
 }
 
 impl<T> Clone for Handle<T> {
-
     fn clone(&self) -> Self {
-        Self { inner: self.inner.clone() }
+        Self {
+            inner: self.inner.clone(),
+        }
     }
 }
 
@@ -363,7 +363,6 @@ impl<T> Deref for Handle<T> {
 }
 
 impl<T> DerefMut for Handle<T> {
-
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.get_mut()
     }
@@ -374,7 +373,6 @@ pub struct WeakHandle<T> {
 }
 
 impl<T> WeakHandle<T> {
-
     pub fn new(inner: Weak<T>) -> Self {
         Self { inner }
     }
@@ -385,8 +383,9 @@ impl<T> WeakHandle<T> {
 }
 
 impl<T> Clone for WeakHandle<T> {
-
     fn clone(&self) -> Self {
-        Self { inner: self.inner.clone() }
+        Self {
+            inner: self.inner.clone(),
+        }
     }
 }

@@ -12,7 +12,7 @@ macro_rules! versions {
                 pub const [<$name _NAME>]: &str = $name_str;
             }
         )*
-        
+
         pub const ALL_VERSIONS: &[i32] = &[$($name),*];
         paste! {
             pub const ALL_VERSION_NAMES: &[&str] = &[$([<$name _NAME>]),*];
@@ -74,12 +74,13 @@ versions! {
     (R1_21_4, "1.21.4", 769)
 }
 
-pub const SUPPORTED_VERSIONS: &[i32] = &[
-    R1_20_2, R1_20_3, R1_20_5,
-    R1_21, R1_21_2, R1_21_4,
-];
+pub const SUPPORTED_VERSIONS: &[i32] = &[R1_20_2, R1_20_3, R1_20_5, R1_21, R1_21_2, R1_21_4];
 
-pub const SUPPORTED_VERSION_RANGE: &str = formatcp!("{}-{}", ALL_VERSION_NAMES[0], ALL_VERSION_NAMES[ALL_VERSION_NAMES.len() - 1]);
+pub const SUPPORTED_VERSION_RANGE: &str = formatcp!(
+    "{}-{}",
+    ALL_VERSION_NAMES[0],
+    ALL_VERSION_NAMES[ALL_VERSION_NAMES.len() - 1]
+);
 
 pub fn is_supported(version: i32) -> bool {
     SUPPORTED_VERSIONS.contains(&version)

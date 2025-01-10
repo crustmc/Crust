@@ -1,13 +1,21 @@
-use std::fmt::Display;
 use serde::Serialize;
+use std::fmt::Display;
 
 use super::ProxyServer;
 
 pub fn get_status_response(client_version: i32) -> StatusResponse {
     StatusResponse {
         version: Version {
-            name: format!("{} {}", crate::server::NAME, crate::version::SUPPORTED_VERSION_RANGE),
-            protocol: if crate::version::is_supported(client_version) { client_version } else { -1 },
+            name: format!(
+                "{} {}",
+                crate::server::NAME,
+                crate::version::SUPPORTED_VERSION_RANGE
+            ),
+            protocol: if crate::version::is_supported(client_version) {
+                client_version
+            } else {
+                -1
+            },
         },
         players: Players {
             max: ProxyServer::instance().config().max_players,
@@ -28,7 +36,6 @@ pub struct StatusResponse {
 }
 
 impl Display for StatusResponse {
-    
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", serde_json::to_string(self).unwrap())
     }

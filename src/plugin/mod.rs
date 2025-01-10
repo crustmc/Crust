@@ -5,7 +5,10 @@ use serde::Deserialize;
 use std::path::Path;
 use std::sync::Arc;
 use tokio::runtime;
-use wasmer::{imports, Function, FunctionEnv, Imports, Instance, MemoryView, Module, Store, TypedFunction, Value, WasmPtr};
+use wasmer::{
+    imports, Function, FunctionEnv, Imports, Instance, MemoryView, Module, Store, TypedFunction,
+    Value, WasmPtr,
+};
 use wasmer_wasix::capabilities::{Capabilities, CapabilityThreadingV1};
 use wasmer_wasix::http::HttpClientCapabilityV1;
 use wasmer_wasix::runtime::task_manager::tokio::TokioTaskManager;
@@ -127,11 +130,11 @@ impl PluginManager {
             return Err("Plugin rejected metadata query".into());
         }
 
-
         //  MemoryView::
         let memory = wasi_env.env.as_ref(&store).try_memory().unwrap().clone();
         if memory.view(&store).size().0 < 1 {
-            memory.grow(&mut store, 1)
+            memory
+                .grow(&mut store, 1)
                 .map_err(|e| format!("Failed to grow memory: {}", e))?;
         }
 
