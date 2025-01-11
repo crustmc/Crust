@@ -93,6 +93,7 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
         let mut in_bundle = false;
 
         while let Some(event) = receiver.recv().await {
+            let start_time = SystemTime::now();
             match event {
                 PacketSending::Packet(packet, bypass) => {
                     if drop_redundant && !bypass {
@@ -196,6 +197,7 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
                     }
                 }
             }
+            error!("{}", start_time.elapsed().unwrap().as_millis());
         }
     });
 
@@ -403,12 +405,13 @@ async fn read_task(
             break;
         }
         if should_forward && res.unwrap() {
-            if let Err(e) = partner.queue_packet(read_buf, false).await {
+            if let Err(e) = partner.queue_packet(read_buf.clone(), false).await {
                 partner.disconnect(&e.to_string()).await;
                 should_forward = false;
             }
         }
-        read_buf = Vec::new();
+        read_buf.clear();
+       // read_buf = Vec::new();
     }
 }
 

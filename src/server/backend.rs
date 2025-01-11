@@ -5,7 +5,7 @@ use std::{
     ops::DerefMut,
     pin::Pin,
 };
-
+use log::warn;
 use rand::RngCore;
 use rsa::{Pkcs1v15Encrypt, RsaPublicKey};
 use tokio::net::{TcpStream, ToSocketAddrs};
@@ -101,8 +101,8 @@ impl EstablishedBackend {
             let mut protocol_buf = Vec::new();
             let mut read = self_handle.reader.lock().await;
             let mut decryption = self_handle.decryption.lock().await;
+            let mut read_buf = Vec::new();
             loop {
-                let mut read_buf = Vec::new();
                 let res = read_and_decode_packet(
                     read.deref_mut(),
                     &mut read_buf,
@@ -138,12 +138,13 @@ impl EstablishedBackend {
                     break;
                 }
                 if res.unwrap() {
-                    if let Err(e) = partner.connection.queue_packet(read_buf, false).await {
+                    if let Err(e) = partner.connection.queue_packet(read_buf.clone(), false).await {
                         // TODO: handle when client is disconnected
                         self_handle.disconnect(&e.to_string()).await;
                         break;
                     }
                 }
+                read_buf.clear();
             }
         });
 
