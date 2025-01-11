@@ -25,7 +25,7 @@ use super::{
     packet_ids::{ClientPacketType, PacketRegistry, ServerPacketType},
     packets::{ClientSettings, Kick, ProtocolState, SystemChatMessage, UnsignedClientCommand},
     proxy_handler::ConnectionHandle,
-    ProxiedPlayer, SlotId,
+    ProxiedPlayer,
 };
 
 pub struct ClientPacketHandler;
@@ -148,18 +148,18 @@ impl ClientPacketHandler {
 
 pub fn switch_server_helper(
     player: WeakHandle<ProxiedPlayer>,
-    server_id: SlotId,
+    server_name: String,
 ) -> Pin<Box<dyn Future<Output = ()> + Send>> {
     let block = async move {
         if let Some(player) = player.upgrade() {
-            if player.current_server.is_some() && player.current_server.unwrap() == server_id {
+            if player.current_server.is_some() && player.current_server.as_ref().unwrap() == &*server_name {
                 player
                     .send_message(Text::new("§cYou're already connected to this server"))
                     .await
                     .ok();
                 return;
             }
-            ProxiedPlayer::switch_server(player, server_id).await;
+            ProxiedPlayer::switch_server(player, server_name).await;
         }
     };
     Box::pin(block)

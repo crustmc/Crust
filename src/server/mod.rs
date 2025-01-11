@@ -22,7 +22,6 @@ use std::{
     sync::atomic::Ordering,
     time::{Duration, Instant},
 };
-use slotmap::{DefaultKey, SlotMap};
 use tokio::io::AsyncWriteExt;
 use tokio::time::sleep;
 use tokio::{net::TcpListener, runtime::Runtime, sync::RwLock, task::JoinHandle};
@@ -116,8 +115,7 @@ pub struct ServerInfo {
 
 pub struct ServerList {
     priorities: Vec<String>,
-    servers: SlotMap<SlotId, ServerInfo>,
-    servers_by_name: HashMap<String, SlotId>,
+    servers_by_name: HashMap<String, ServerInfo>,
 }
 
 impl ServerList {
@@ -125,54 +123,29 @@ impl ServerList {
         &self.priorities
     }
 
-    pub fn all_servers(&self) -> impl Iterator<Item = (SlotId, &ServerInfo)> {
-        self.servers.iter()
-    }
-
-    pub fn get_server_id_by_name(&self, label: &str) -> Option<SlotId> {
-        self.servers_by_name.get(label).copied()
+    pub fn all_servers(&self) -> impl Iterator<Item = (&String, &ServerInfo)> {
+        self.servers_by_name.iter()
     }
 
     pub fn get_server_by_name(&self, label: &str) -> Option<&ServerInfo> {
-        self.servers_by_name
-            .get(label)
-            .map(|id| self.servers.get(*id).unwrap())
+        self.servers_by_name.get(label)
     }
 
-    pub fn get_server(&self, id: SlotId) -> Option<&ServerInfo> {
-        self.servers.get(id)
-    }
-
-    pub fn add_server(&mut self, server: ServerInfo) -> SlotId {
-        let label = server.label.clone();
-        let id = self.servers.insert(server);
-        self.servers_by_name.insert(label, id);
-        id
+    pub fn add_server(&mut self, server: ServerInfo) {
+        self.servers_by_name.insert(server.label.clone(), server);
     }
 
     pub fn remove_server_by_name(&mut self, label: &str) -> bool {
-        if let Some(id) = self.servers_by_name.remove(label) {
-            self.servers.remove(id);
-            return true;
-        }
-        false
-    }
-
-    pub fn remove_server(&mut self, id: SlotId) -> bool {
-        if let Some(server) = self.servers.get(id) {
-            self.servers_by_name.remove(&server.label);
-            self.servers.remove(id);
+        if let Some(_) = self.servers_by_name.remove(label) {
             return true;
         }
         false
     }
 
     pub fn list_servers(&self) -> impl Iterator<Item = &ServerInfo> {
-        self.servers.values()
+        self.servers_by_name.values()
     }
 }
-
-pub type SlotId = DefaultKey;
 
 pub struct ProxyServer {
     runtime: Runtime,
@@ -345,7 +318,6 @@ pub fn run_server() {
 
     let mut server_list = ServerList {
         priorities: config.priorities.clone(),
-        servers: SlotMap::new(),
         servers_by_name: HashMap::new(),
     };
     for entry in &config.servers {
@@ -429,7 +401,7 @@ pub struct ProxiedPlayer {
     pub uuid: Uuid,
     pub login_result: LoginResult,
     pub player_public_key: Option<PlayerPublicKey>,
-    pub current_server: Option<SlotId>,
+    pub current_server: Option<String>,
     pub client_handle: ConnectionHandle,
     pub server_handle: Option<ConnectionHandle>,
     pub protocol_version: i32,
@@ -500,7 +472,7 @@ impl ProxiedPlayer {
 
     pub async fn switch_server(
         mut player: Handle<ProxiedPlayer>,
-        server_id: SlotId,
+        server: String,
     ) -> Option<JoinHandle<bool>> {
         if player.client_handle.closed.load(Ordering::Relaxed) {
             return None;
@@ -522,7 +494,7 @@ impl ProxiedPlayer {
 
             let (addr, server_name) = {
                 let server_list = ProxyServer::instance().servers().read().await;
-                let server = server_list.get_server(server_id);
+                let server = server_list.get_server_by_name(&server);
                 if server.is_none() {
                     *player
                         .sync_data
@@ -626,7 +598,7 @@ impl ProxiedPlayer {
                 )
                 .await;
 
-            player.current_server = Some(server_id);
+            player.current_server = Some(server.to_string());
             player.server_handle = Some(server_handle);
             player.login_result = login_result;
             *player

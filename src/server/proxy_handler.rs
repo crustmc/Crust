@@ -262,14 +262,14 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
     let server_data = 'l: {
         let servers = ProxyServer::instance().servers().read().await;
         for server in servers.get_priorities() {
-            let server_id = servers.get_server_id_by_name(server);
+            let server_id = servers.get_server_by_name(server);
             if server_id.is_none() {
                 warn!("{} Skipping, prioritized server not found!", display_name);
                 continue;
             }
-            let server_id = server_id.unwrap();
-            let default_server = servers.get_server(server_id).unwrap();
+            let default_server = server_id.unwrap();
             let addr = default_server.address.clone();
+            let label = default_server.label.clone();
 
             let backend = super::backend::connect(
                 data_address,
@@ -286,7 +286,7 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
                 continue;
             }
 
-            break 'l Some((server.to_owned(), server_id, backend.unwrap()));
+            break 'l Some((server.to_owned(), label, backend.unwrap()));
         }
         None
     };
@@ -322,10 +322,10 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
         return;
     }
 
-    let (server_name, server_id, backend) = server_data.unwrap();
+    let (server_name, label, backend) = server_data.unwrap();
     let (_backend_profile, backend_handle) = backend.begin_proxying(&server_name, handle).await;
 
-    player.current_server = Some(server_id);
+    player.current_server = Some(label);
     player.server_handle = Some(backend_handle.clone());
 
     con_handle

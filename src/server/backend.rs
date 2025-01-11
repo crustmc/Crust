@@ -33,7 +33,7 @@ use super::{
         LoginSuccess, PlayerPublicKey, ProtocolState, PROTOCOL_STATE_LOGIN,
     },
     proxy_handler::{ClientHandle, ConnectionHandle, PacketSending},
-    ProxiedPlayer, ProxyServer, SlotId,
+    ProxiedPlayer, ProxyServer,
 };
 
 #[derive(Debug)]
@@ -209,9 +209,9 @@ impl EstablishedBackend {
             drop(disconnect_guard);
             let servers = ProxyServer::instance().servers().read().await;
             for server_name in servers.get_priorities() {
-                let server = servers.get_server_id_by_name(&server_name);
+                let server = servers.get_server_by_name(&server_name);
                 if let Some(server) = server {
-                    if switch_server_helper(player.clone(), server).await {
+                    if switch_server_helper(player.clone(), server_name.to_string()).await {
                         return;
                     }
                 }
@@ -237,7 +237,7 @@ impl EstablishedBackend {
 
 fn switch_server_helper(
     player: WeakHandle<ProxiedPlayer>,
-    server: SlotId,
+    server: String,
 ) -> Pin<Box<dyn Future<Output = bool> + Send>> {
     let block = async move {
         if let Some(player) = player.upgrade() {

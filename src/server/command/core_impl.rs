@@ -185,20 +185,18 @@ fn send_command(sender: &CommandSender, _name: &str, args: Vec<&str>) {
         return;
     }
     let player_name = args.first().unwrap();
-    let server_name = args.get(1).unwrap();
+    let server_name = args.get(1).unwrap().to_string();
     let server_block = ProxyServer::instance().servers().blocking_read();
     let server_id = server_block.servers_by_name.get(&server_name.to_string());
     if server_id.is_none() {
         sender.send_message(TextBuilder::new(format!("The server {} was not found", server_name)).style(Style::empty().with_color(TextColor::Red)));
         return;
     }
-    let server_id_to = server_id.unwrap().clone();
-
     if player_name.eq_ignore_ascii_case("*") {
         ProxyServer::instance().spawn_task(async move {
             for (_, player) in ProxyServer::instance().player_by_name.read().await.iter() {
                 if let Some(player) = player.upgrade() {
-                    ProxiedPlayer::switch_server(player, server_id_to).await;
+                    ProxiedPlayer::switch_server(player, server_name.clone()).await;
                 }
             }
         });
@@ -211,13 +209,14 @@ fn send_command(sender: &CommandSender, _name: &str, args: Vec<&str>) {
             }
             CommandSender::Player(player) => {
                 if let Some(player) = player.upgrade() {
-                    if let Some(server_from) = player.current_server {
+                    if let Some(server_from) = player.current_server.as_ref() {
+                        let server_from = server_from.clone();
                         ProxyServer::instance().spawn_task(async move {
                             for (_, player) in ProxyServer::instance().player_by_name.read().await.iter() {
                                 if let Some(player) = player.upgrade() {
-                                    if let Some(players_server) = player.current_server {
-                                        if players_server == server_from {
-                                            ProxiedPlayer::switch_server(player.clone(), server_id_to).await;
+                                    if let Some(players_server) = player.current_server.as_ref() {
+                                        if players_server == &server_from {
+                                            ProxiedPlayer::switch_server(player.clone(), server_name.clone()).await;
                                         }
                                     }
                                 }
@@ -243,7 +242,7 @@ fn send_command(sender: &CommandSender, _name: &str, args: Vec<&str>) {
         }
         let player = player.unwrap();
         ProxyServer::instance().spawn_task(async move {
-            ProxiedPlayer::switch_server(player.clone(), server_id_to).await;
+            ProxiedPlayer::switch_server(player.clone(), server_name.to_string()).await;
         });
 
     }
@@ -257,8 +256,8 @@ fn glist_command(sender: &CommandSender, _name: &str, args: Vec<&str>) {
     for (_, player) in players.iter() {
         if let Some(player) = player.upgrade() {
             amt += 1;
-            if let Some(server_id) = player.current_server {
-                if let Some(server) = servers.servers.get(server_id) {
+            if let Some(server_name) = player.current_server.as_ref() {
+                if let Some(server) = servers.servers_by_name.get(server_name) {
                     if !map.contains_key(&server.label) {
                         let vec = vec!(player.name.clone());
                         map.insert(server.label.clone(), vec);
@@ -294,9 +293,9 @@ fn server_command(sender: &CommandSender, _name: &str, args: Vec<&str>) {
         let servers = ProxyServer::instance().servers.blocking_read();
         let mut first = true;
         if let Some(player) = player.upgrade() {
-            let current = player.current_server;
+            let current = player.current_server.as_ref();
             if let Some(server) = current {
-                if let Some(server) = servers.servers.get(server) {
+                if let Some(server) = servers.servers_by_name.get(server) {
                     sender.send_message(TextBuilder::new(format!("You are currenrly connected to {}", server.label )).style(style.clone()).build());
                 }
             }
@@ -324,11 +323,11 @@ fn server_command(sender: &CommandSender, _name: &str, args: Vec<&str>) {
     } else {
         let server_name = args.first().unwrap();
         let servers = ProxyServer::instance().servers.blocking_read();
-        let server = servers.get_server_id_by_name(&server_name);
+        let server = servers.get_server_by_name(&server_name);
         if let Some(server_id) = server {
             drop(servers);
             ProxyServer::instance().block_on(crate::server::packet_handler::switch_server_helper(
-                player, server_id,
+                player, server_name.to_string(),
             ));
         } else {
             drop(servers);
