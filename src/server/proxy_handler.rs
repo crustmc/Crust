@@ -85,7 +85,7 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
     let (read, mut write) = stream.into_split();
     let compression_threshold = data.compression_threshold;
 
-    let (sender, mut receiver) = tokio::sync::mpsc::channel(256);
+    let (sender, mut receiver) = tokio::sync::mpsc::channel(1000);
 
     let write_task = tokio::spawn(async move {
         let mut protocol_buf = Vec::new();
@@ -96,7 +96,6 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
             match event {
                 PacketSending::Packet(packet, bypass) => {
                     if drop_redundant && !bypass {
-                        warn!("DROPPED PACKET!");
                         break;
                     }
                     let res = encode_and_send_packet(

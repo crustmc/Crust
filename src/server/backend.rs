@@ -147,7 +147,7 @@ impl EstablishedBackend {
             }
         });
 
-        let (sender, mut receiver) = tokio::sync::mpsc::channel(256);
+        let (sender, mut receiver) = tokio::sync::mpsc::channel(1000);
 
         let write_task = tokio::spawn(async move {
             let mut protocol_buf = Vec::new();
