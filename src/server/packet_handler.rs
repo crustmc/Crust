@@ -47,7 +47,7 @@ impl ClientPacketHandler {
                 ClientPacketType::FinishConfiguration => {
                     client_handle.set_protocol_state(ProtocolState::Game);
                     if let Some(player) = player.upgrade() {
-                        if player.sync_data.is_switching_server.load(Ordering::Relaxed) {
+                        if *player.sync_data.is_switching_server.lock().await {
                             player.sync_data.game_ack_notify.notify_one();
                             return Ok(false);
                         }
@@ -56,7 +56,7 @@ impl ClientPacketHandler {
                 ClientPacketType::ConfigurationAck => {
                     client_handle.set_protocol_state(ProtocolState::Config);
                     if let Some(player) = player.upgrade() {
-                        if player.sync_data.is_switching_server.load(Ordering::Relaxed) {
+                        if *player.sync_data.is_switching_server.lock().await {
                             player.sync_data.config_ack_notify.notify_one();
                             return Ok(false);
                         }
@@ -182,8 +182,8 @@ impl ServerPacketHandler {
             packet_id,
         ) {
             match packet_type {
-                ServerPacketType::BundleDelimiter => {
-                    let _ = client_handle.on_bundle().await;
+                ServerPacketType::BundleDelimiter => { 
+                    client_handle.on_bundle().await?;
                     return Ok(false);
                 }
                 ServerPacketType::Kick => {

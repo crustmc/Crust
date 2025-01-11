@@ -533,14 +533,14 @@ impl ProxiedPlayer {
             return None;
         }
 
-        if let Err(true) = player.sync_data.is_switching_server.compare_exchange(
-            false,
-            true,
-            Ordering::Relaxed,
-            Ordering::Relaxed,
-        ) {
+        let mut switch_lock = player.sync_data.is_switching_server.lock().await;
+        if *switch_lock {
             return None;
+        } else {
+            *switch_lock = true;
         }
+        drop(switch_lock);
+
         let version = player.protocol_version;
         let join_handle = tokio::spawn(async move {
             if player.client_handle.closed.load(Ordering::Relaxed) {
@@ -551,10 +551,9 @@ impl ProxiedPlayer {
                 let server_list = ProxyServer::instance().servers().read().await;
                 let server = server_list.get_server(server_id);
                 if server.is_none() {
-                    player
+                    *player
                         .sync_data
-                        .is_switching_server
-                        .store(false, Ordering::Relaxed);
+                        .is_switching_server.lock().await = false;
                     return false;
                 }
                 let server = server.unwrap();
@@ -574,10 +573,9 @@ impl ProxiedPlayer {
             .await;
             if let Err(e) = backend {
                 log::error!("[{}] Failed to connect to backend: {}", username, e);
-                player
+                *player
                     .sync_data
-                    .is_switching_server
-                    .store(false, Ordering::Relaxed);
+                    .is_switching_server.lock().await = false;
                 let _ = player
                     .send_message(Text::new(format!("§cCould not connect: {}", e)))
                     .await;
@@ -597,8 +595,10 @@ impl ProxiedPlayer {
                 if player.client_handle.protocol_state() == ProtocolState::Config {
                     player.client_handle.goto_game(version).await.ok();
                     player.sync_data.game_ack_notify.notified().await;
+                    // client needs some time to change states somehow if it was in config, otherwise protocol error occours in client
+                    tokio::time::sleep(Duration::from_millis(100)).await;
                 }
-
+                
                 player.client_handle.goto_config(version).await.ok();
                 player.sync_data.config_ack_notify.notified().await;
                 player.client_handle.drop_redundant(false).await.ok();
@@ -631,10 +631,9 @@ impl ProxiedPlayer {
                 {
                     if let Err(_e) = server_handle.queue_packet(data, false).await {
                         drop(settings);
-                        player
+                        *player
                             .sync_data
-                            .is_switching_server
-                            .store(false, Ordering::Relaxed);
+                            .is_switching_server.lock().await = false;
                         return false;
                     }
                 }
@@ -657,10 +656,9 @@ impl ProxiedPlayer {
             player.current_server = Some(server_id);
             player.server_handle = Some(server_handle);
             player.login_result = login_result;
-            player
+            *player
                 .sync_data
-                .is_switching_server
-                .store(false, Ordering::Relaxed);
+                .is_switching_server.lock().await = false;
             true
         });
         Some(join_handle)

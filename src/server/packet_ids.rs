@@ -17,10 +17,10 @@ pub enum ServerPacketType {
     LoginSuccess,       // login
     SetCompression,     // login
 
-    StartConfiguration, // game
+    ClientboundStartConfigurationPacket, // game
     Kick,               // config, game
     ServerCustomPayload,
-    FinishConfiguration, // config
+    ClientboundFinishConfigurationPacket, // config
     BundleDelimiter,     // game
     SystemChatMessage,   // game
     Commands,            // game
@@ -250,7 +250,7 @@ impl PacketRegistry {
                 (R1_20_5, 0x02)
             }
             begin! {
-                Server, Config, FinishConfiguration;
+                Server, Config, ClientboundFinishConfigurationPacket;
                 (R1_20_2, 0x02)
                 (R1_20_5, 0x03)
             }
@@ -353,7 +353,7 @@ impl PacketRegistry {
                 (R1_20_5, 0x1D)
             }
             begin! {
-                Server, Game, StartConfiguration;
+                Server, Game, ClientboundStartConfigurationPacket;
                 (R1_20_2, 0x65)
                 (R1_20_3, 0x67)
                 (R1_20_5, 0x69)

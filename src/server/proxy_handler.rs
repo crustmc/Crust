@@ -48,7 +48,7 @@ pub(crate) struct ProxyingData {
 }
 
 pub(crate) struct PlayerSyncData {
-    pub is_switching_server: AtomicBool,
+    pub is_switching_server: Mutex<bool>,
     pub config_ack_notify: Notify,
     pub game_ack_notify: Notify,
     pub client_settings: Mutex<Option<ClientSettings>>,
@@ -72,16 +72,16 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
     let proxy_server = ProxyServer::instance();
 
     let uuid = uuid.unwrap();
-    
+
     let data_address = data.address.clone();
     let data_login_result = data.login_result.clone();
     let data_player_public_key = data.player_public_key.clone();
-    
+
     let (mut encryption, decryption) = match data.encryption {
         Some(encryption) => (Some(encryption.0), Some(encryption.1)),
         None => (None, None),
     };
-    
+
     let (read, mut write) = stream.into_split();
     let compression_threshold = data.compression_threshold;
 
@@ -150,7 +150,7 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
                     if let Some(packet_id) = PacketRegistry::instance().get_server_packet_id(
                         ProtocolState::Game,
                         version,
-                        ServerPacketType::StartConfiguration,
+                        ServerPacketType::ClientboundStartConfigurationPacket,
                     ) {
                         if let Err(_e) = encode_and_send_packet(
                             &mut write,
@@ -177,7 +177,7 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
                     if let Some(packet_id) = PacketRegistry::instance().get_server_packet_id(
                         ProtocolState::Config,
                         version,
-                        ServerPacketType::FinishConfiguration,
+                        ServerPacketType::ClientboundFinishConfigurationPacket,
                     ) {
                         if let Err(_e) = encode_and_send_packet(
                             &mut write,
@@ -201,7 +201,7 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
     });
 
     let player_sync_data = PlayerSyncData {
-        is_switching_server: AtomicBool::new(false),
+        is_switching_server: Mutex::new(false),
         game_ack_notify: Notify::new(),
         config_ack_notify: Notify::new(),
         client_settings: Mutex::new(None),
@@ -236,7 +236,7 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
     });
 
     let mut players = proxy_server.players().write().await;
-    
+
     if proxy_server.player_by_uuid.read().await.contains_key(&player.uuid) || proxy_server.player_by_name.read().await.contains_key(&player.name.to_ascii_lowercase()) {
         player.kick(Text::new("§cYou are already connected to this proxy")).await.ok();
         return;
@@ -261,7 +261,7 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
         connection: handle,
     };
     let con_handle = handle.connection.clone();
-    
+
     debug!("{} Connecting to priority servers...", display_name);
     let server_data = 'l: {
         let servers = ProxyServer::instance().servers().read().await;
@@ -325,7 +325,7 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
 
     let (server_name, server_id, backend) = server_data.unwrap();
     let (_backend_profile, backend_handle) = backend.begin_proxying(&server_name, handle).await;
-    
+
     player.current_server = Some(server_id);
     player.server_handle = Some(backend_handle.clone());
 

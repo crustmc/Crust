@@ -38,6 +38,14 @@ pub fn register_all(builder: CommandRegistryBuilder) -> CommandRegistryBuilder {
             "Shutdown the proxy",
         )
         .core_command(
+            ["send"],
+            Default::default(),
+            send_command,
+            Some(send_command_completer),
+            "crust.command.send",
+            "Send players to a different backend",
+        )
+        .core_command(
             ["glist"],
             Default::default(),
             glist_command,
@@ -96,6 +104,55 @@ fn gkick_command(sender: &CommandSender, _name: &str, mut args: Vec<&str>) {
     )))
 }
 
+fn send_command_completer(
+    _sender: &CommandSender,
+    _name: &str,
+    args: Vec<&str>,
+    suggestions: &mut Suggestions,
+) {
+    if args.len() == 1 {
+        let filter = args.first().unwrap();
+
+        if "*".starts_with(filter) {
+            suggestions.matches.push(Suggestion {
+                text: "*".to_string(),
+                tooltip: None,
+            });
+        }
+
+        if "*current".starts_with(filter) {
+            suggestions.matches.push(Suggestion {
+                text: "*current".to_string(),
+                tooltip: None,
+            });
+        }
+        
+        let players = ProxyServer::instance().players().blocking_read();
+        for (_, player) in players.iter() {
+            if !player.name.starts_with(filter) {
+                continue;
+            }
+            suggestions.matches.push(Suggestion {
+                text: player.name.clone(),
+                tooltip: None,
+            });
+        }
+    } else if args.len() == 2 {
+        let filter = args.get(1).unwrap();
+        let block = ProxyServer::instance().servers().blocking_read();
+        let servers = block.servers_by_name.keys();
+        for server_name in servers {
+            if !server_name.starts_with(filter) {
+                continue;
+            }
+            suggestions.matches.push(Suggestion {
+                text: server_name.clone(),
+                tooltip: None,
+            });
+        }
+    } 
+}
+
 fn gkick_command_completer(
     _sender: &CommandSender,
     _name: &str,
@@ -131,13 +188,54 @@ fn send_command(sender: &CommandSender, _name: &str, args: Vec<&str>) {
         sender.send_message(TextBuilder::new(format!("The server {} was not found", server_name)).style(Style::empty().with_color(TextColor::Red)));
         return;
     }
-    let server_id = server_id.unwrap().clone();
+    let server_id_to = server_id.unwrap().clone();
 
-    if player_name.eq_ignore_ascii_case("all") {
+    if player_name.eq_ignore_ascii_case("*") {
         ProxyServer::instance().spawn_task(async move {
             for (_, player) in ProxyServer::instance().players().read().await.iter() {
-                ProxiedPlayer::switch_server(player.clone(), server_id).await;
+                ProxiedPlayer::switch_server(player.clone(), server_id_to).await;
             }
+        });
+    }
+    else if player_name.eq_ignore_ascii_case("*current") {
+        match sender {
+            CommandSender::Console => {
+                sender.send_message(TextBuilder::new("Current not supported for console"));
+                return;
+            }
+            CommandSender::Player(player) => {
+                if let Some(player) = player.upgrade() {
+                    if let Some(server_from) = player.current_server {
+                        ProxyServer::instance().spawn_task(async move {
+                            for (_, player) in ProxyServer::instance().players().read().await.iter() {
+                                if let Some(players_server) = player.current_server {
+                                    if players_server == server_from {
+                                        ProxiedPlayer::switch_server(player.clone(), server_id_to).await;
+                                    }
+                                }
+                            }
+                        });
+
+                    }
+                }
+            }
+        }
+    } else {
+        let player = ProxyServer::instance().get_player_by_name_blocking(player_name);
+        if player.is_none() {
+            sender.send_message(TextBuilder::new("§cPlayer not online."));
+            return;
+        }
+        let player = player.unwrap();
+
+        let player = player.upgrade();
+        if player.is_none() {
+            sender.send_message(TextBuilder::new("§cPlayer not online."));
+            return;
+        }
+        let player = player.unwrap();
+        ProxyServer::instance().spawn_task(async move {
+            ProxiedPlayer::switch_server(player.clone(), server_id_to).await;
         });
 
     }
