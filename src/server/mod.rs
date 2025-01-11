@@ -202,20 +202,6 @@ impl ProxyServer {
         &self.servers
     }
 
-    /*pub fn players(&self) -> &RwLock<SlotMap<SlotId, Handle<ProxiedPlayer>>> {
-        &self.players
-    }*/
-
-  /*  pub async fn get_player_by_name(&self, name: &str) -> Option<WeakHandle<ProxiedPlayer>> {
-        let lock = self.player_by_name.blocking_read();
-        let player = lock.get(&name.to_ascii_lowercase())?;
-        if let Some((_, player_ref)) = player {
-            Some(player_ref.downgrade())
-        } else {
-            None
-        }
-    }*/
-
     pub fn get_player_by_name_blocking(&self, name: &str) -> Option<WeakHandle<ProxiedPlayer>> {
         self.player_by_name.blocking_read().get(&name.to_ascii_lowercase()).cloned()
     }

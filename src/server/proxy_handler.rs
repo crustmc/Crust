@@ -300,15 +300,13 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
         let mut player_by_name = proxy_server.player_by_name.write().await;
         let mut player_by_uuid = proxy_server.player_by_uuid.write().await;
 
-        player_by_name.remove(&player_handle_clone.name);
+        player_by_name.remove(&player_handle_clone.name.to_ascii_lowercase());
         player_by_uuid.remove(&player_handle_clone.uuid);
-
         *unsafe {
             core::mem::transmute::<_, &mut usize>(
                 &proxy_server.player_count as *const usize,
             )
         } -= 1;
-        
         drop(player_by_name);
         drop(player_by_uuid);
 
