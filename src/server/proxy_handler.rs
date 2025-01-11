@@ -295,14 +295,6 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
         None
     };
 
-    if server_data.is_none() {
-        player.kick(Text::new("§cNo server found for you to connect")).await.ok();
-        return;
-    }
-
-    let (server_name, server_id, backend) = server_data.unwrap();
-    let (_backend_profile, backend_handle) = backend.begin_proxying(&server_name, handle).await;
-
     tokio::spawn(async move {
         let disconnect_guard = disconnect_lock.write().await;
         let _ = write_task.await;
@@ -325,6 +317,14 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
         }
         drop(disconnect_guard);
     });
+
+    if server_data.is_none() {
+        player.kick(Text::new("§cNo server found for you to connect")).await.ok();
+        return;
+    }
+
+    let (server_name, server_id, backend) = server_data.unwrap();
+    let (_backend_profile, backend_handle) = backend.begin_proxying(&server_name, handle).await;
     
     player.current_server = Some(server_id);
     player.server_handle = Some(backend_handle.clone());

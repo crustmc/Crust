@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::ops::Deref;
+use wasmer_wasix::virtual_net::VirtualConnectedSocketExt;
 use super::{CommandRegistryBuilder, CommandSender};
 use crate::{
     chat::*,
@@ -8,6 +9,7 @@ use crate::{
         ProxyServer,
     },
 };
+use crate::server::ProxiedPlayer;
 
 pub fn register_all(builder: CommandRegistryBuilder) -> CommandRegistryBuilder {
     builder
@@ -116,6 +118,31 @@ fn gkick_command_completer(
     }
 }
 
+fn send_command(sender: &CommandSender, _name: &str, args: Vec<&str>) {
+    if args.len() != 2 {
+        sender.send_message(TextBuilder::new("Usage: /send <players> <server>").style(Style::empty().with_color(TextColor::Red)));
+        return;
+    }
+    let player_name = args.first().unwrap();
+    let server_name = args.get(1).unwrap();
+    let server_block = ProxyServer::instance().servers().blocking_read();
+    let server_id = server_block.servers_by_name.get(&server_name.to_string());
+    if server_id.is_none() {
+        sender.send_message(TextBuilder::new(format!("The server {} was not found", server_name)).style(Style::empty().with_color(TextColor::Red)));
+        return;
+    }
+    let server_id = server_id.unwrap().clone();
+
+    if player_name.eq_ignore_ascii_case("all") {
+        ProxyServer::instance().spawn_task(async move {
+            for (_, player) in ProxyServer::instance().players().read().await.iter() {
+                ProxiedPlayer::switch_server(player.clone(), server_id).await;
+            }
+        });
+
+    }
+}
+
 fn glist_command(sender: &CommandSender, _name: &str, args: Vec<&str>) {
     let mut amt = 0usize;
     let mut map = HashMap::new();
@@ -137,7 +164,7 @@ fn glist_command(sender: &CommandSender, _name: &str, args: Vec<&str>) {
     }
     drop(players);
     drop(servers);
-    
+
     let style = Style::default().with_color(TextColor::from_rgb(182, 255, 156));
     sender.send_message(TextBuilder::new(format!("There are currently {} players on the proxy", amt)).style(style.clone()));
     for (name, player_names) in map {
@@ -166,7 +193,7 @@ fn server_command(sender: &CommandSender, _name: &str, args: Vec<&str>) {
                 }
             }
         }
-        
+
         let mut builder = TextBuilder::new("Available servers: ").style(style);
         for (_, info) in servers.all_servers() {
             if first {
