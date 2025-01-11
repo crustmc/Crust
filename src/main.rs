@@ -15,6 +15,7 @@ use uuid::Uuid;
 pub mod auth;
 pub mod chat;
 pub mod haproxy;
+#[cfg(feature = "plugin-system")]
 pub mod plugin;
 pub mod server;
 pub mod util;

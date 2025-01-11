@@ -1,9 +1,10 @@
 use crate::util::WeakHandle;
+#[cfg(feature = "plugin-system")]
+use crate::plugin::PluginManager;
 use crate::{
     auth::LoginResult,
     chat::Text,
     hash_map,
-    plugin::PluginManager,
     util::{Handle, IOResult},
 };
 use base64::Engine;
@@ -26,7 +27,6 @@ use tokio::io::AsyncWriteExt;
 use tokio::time::sleep;
 use tokio::{net::TcpListener, runtime::Runtime, sync::RwLock, task::JoinHandle};
 use uuid::Uuid;
-use wasmer_wasix::types::wasi::Clockid::ProcessCputimeId;
 
 pub(crate) mod backend;
 pub(crate) mod brigadier;
@@ -344,6 +344,7 @@ pub fn run_server() {
         });
     }
 
+    #[cfg(feature = "plugin-system")]
     ProxyServer::instance().block_on(async move {
         if !PluginManager::load_plugins() {
             log::error!("Error while loading plugins, shutting down.");

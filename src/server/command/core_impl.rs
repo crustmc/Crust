@@ -1,6 +1,4 @@
 use std::collections::HashMap;
-use std::ops::Deref;
-use wasmer_wasix::virtual_net::VirtualConnectedSocketExt;
 use super::{CommandRegistryBuilder, CommandSender};
 use crate::{
     chat::*,
