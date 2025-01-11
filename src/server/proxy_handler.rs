@@ -93,7 +93,6 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
         let mut in_bundle = false;
 
         while let Some(event) = receiver.recv().await {
-            let start_time = SystemTime::now();
             match event {
                 PacketSending::Packet(packet, bypass) => {
                     if drop_redundant && !bypass {
@@ -197,7 +196,6 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
                     }
                 }
             }
-            error!("{}", start_time.elapsed().unwrap().as_millis());
         }
     });
 
