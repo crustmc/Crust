@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+use std::ops::Deref;
 use super::{CommandRegistryBuilder, CommandSender};
 use crate::{
     chat::*,
@@ -32,6 +34,14 @@ pub fn register_all(builder: CommandRegistryBuilder) -> CommandRegistryBuilder {
             None,
             "crust.command.end",
             "Shutdown the proxy",
+        )
+        .core_command(
+            ["glist"],
+            Default::default(),
+            glist_command,
+            None,
+            "crust.command.glist",
+            "List all players on the proxy",
         )
 }
 
@@ -106,6 +116,35 @@ fn gkick_command_completer(
     }
 }
 
+fn glist_command(sender: &CommandSender, _name: &str, args: Vec<&str>) {
+    let mut amt = 0usize;
+    let mut map = HashMap::new();
+    let players = ProxyServer::instance().players.blocking_read();
+    let servers = ProxyServer::instance().servers.blocking_read();
+    for (_, player) in players.iter() {
+        amt += 1;
+        if let Some(server_id) = player.current_server {
+            if let Some(server) = servers.servers.get(server_id) {
+                if !map.contains_key(&server.label) {
+                    let vec = vec!(player.name.clone());
+                    map.insert(server.label.clone(), vec);
+                } else {
+                    let mut values = map.get_mut(&server.label).unwrap();
+                    values.push(player.name.clone());
+                }
+            }
+        }
+    }
+    drop(players);
+    drop(servers);
+    
+    let style = Style::default().with_color(TextColor::from_rgb(182, 255, 156));
+    sender.send_message(TextBuilder::new(format!("There are currently {} players on the proxy", amt)).style(style.clone()));
+    for (name, player_names) in map {
+        sender.send_message(TextBuilder::new(format!("{} ({}): {}", name, player_names.len(), player_names.join(", "))).style(style.clone()));
+    }
+}
+
 fn server_command(sender: &CommandSender, _name: &str, args: Vec<&str>) {
     if !sender.is_player() {
         sender.send_message(
@@ -114,12 +153,21 @@ fn server_command(sender: &CommandSender, _name: &str, args: Vec<&str>) {
         );
         return;
     }
+    let style = Style::default().with_color(TextColor::from_rgb(182, 255, 156));
     let player = sender.as_player().unwrap();
     if args.is_empty() {
         let servers = ProxyServer::instance().servers.blocking_read();
         let mut first = true;
-        let mut builder = TextBuilder::new("Available servers: ")
-            .style(Style::default().with_color(TextColor::from_rgb(182, 255, 156)));
+        if let Some(player) = player.upgrade() {
+            let current = player.current_server;
+            if let Some(server) = current {
+                if let Some(server) = servers.servers.get(server) {
+                    sender.send_message(TextBuilder::new(format!("You are currenrly connected to {}", server.label )).style(style.clone()).build());
+                }
+            }
+        }
+        
+        let mut builder = TextBuilder::new("Available servers: ").style(style);
         for (_, info) in servers.all_servers() {
             if first {
                 first = false;

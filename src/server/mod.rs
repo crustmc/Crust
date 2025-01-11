@@ -467,7 +467,7 @@ impl ProxiedPlayer {
     pub fn has_permission(&self, perm: &str) -> bool {
         let mut groups = ProxyServer::instance().config.users.get(&self.name);
         if groups.is_none() {
-            let uuid = &self.login_result.id.replace("-", "").to_string();
+            let uuid = &self.uuid.to_string();
             groups = ProxyServer::instance().config.users.get(uuid);
         }
         if let Some(groups) = groups {
@@ -521,7 +521,7 @@ impl ProxiedPlayer {
             self.client_handle.queue_packet(data, true).await?;
             self.client_handle.sync().await?;
         }
-        self.client_handle.disconnect("player kicked").await;
+        self.client_handle.disconnect(&*kick_packet.text.get_string()).await;
         Ok(())
     }
 

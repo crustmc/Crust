@@ -219,7 +219,6 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
     );
     let disconnect_lock = handle.disconnect_wait.clone();
 
-    info!("{:?}", data.login_result);
     let mut player = Handle::new(ProxiedPlayer {
         player_id: unsafe {
             #[allow(invalid_value)]
