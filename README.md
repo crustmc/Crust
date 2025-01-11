@@ -52,13 +52,11 @@ your backend servers without authentication.
 - [x] versioning in binary file
 - [x] inject into Commands packet to make our commands tabable
 - [x] HA-Proxy support
-- [ ] add a plugin system with API and events
 - [x] simple permission system
 - [x] good terminal UI
 - [x] command system
-- [ ] limbo
 - [ ] support BungeeCord plugin messaging
-- [ ] redis
+- [ ] add a plugin system with API and events
 
 ## Build 🔨
 
