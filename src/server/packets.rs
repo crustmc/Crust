@@ -12,7 +12,7 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use uuid::Uuid;
 
 use crate::{
-    auth::{GameProfile, Property},
+    auth::{LoginResult, Property},
     chat::Text,
     server::nbt,
     util::{EncodingHelper, IOError, IOErrorKind, IOResult, VarInt},
@@ -511,7 +511,7 @@ pub struct EncryptionData {
 }
 
 pub struct LoginSuccess {
-    pub profile: GameProfile,
+    pub profile: LoginResult,
 }
 
 impl ServerPacket for LoginSuccess {
@@ -557,7 +557,7 @@ impl Packet for LoginSuccess {
         }
 
         Ok(Self {
-            profile: GameProfile {
+            profile: LoginResult {
                 id,
                 name,
                 properties,

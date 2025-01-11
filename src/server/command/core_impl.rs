@@ -96,11 +96,11 @@ fn gkick_command_completer(
     let filter = args.first().unwrap();
     let players = ProxyServer::instance().players().blocking_read();
     for (_, player) in players.iter() {
-        if !player.profile.name.starts_with(filter) {
+        if !player.name.starts_with(filter) {
             continue;
         }
         suggestions.matches.push(Suggestion {
-            text: player.profile.name.clone(),
+            text: player.name.clone(),
             tooltip: None,
         });
     }

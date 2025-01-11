@@ -152,7 +152,7 @@ pub fn switch_server_helper(
 ) -> Pin<Box<dyn Future<Output = ()> + Send>> {
     let block = async move {
         if let Some(player) = player.upgrade() {
-            if player.current_server == server_id {
+            if player.current_server.is_some() && player.current_server.unwrap() == server_id {
                 player
                     .send_message(Text::new("§cYou're already connected to this server"))
                     .await
@@ -299,7 +299,7 @@ impl ServerPacketHandler {
                                 //ProxyServer::instance().players().read().await.iter().filter( |(id, player_ref)| player_ref.profile.name == player_name)
                                 let lock = ProxyServer::instance().players().read().await;
                                 let player = lock.iter().find(|(_id, player_ref)| {
-                                    player_ref.profile.name == player_name
+                                    player_ref.name == player_name
                                 });
                                 if let Some((_, player)) = player {
                                     player.kick(Text::new("a")).await?;

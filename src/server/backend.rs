@@ -12,7 +12,7 @@ use tokio::net::{TcpStream, ToSocketAddrs};
 use uuid::Uuid;
 
 use crate::{
-    auth::GameProfile,
+    auth::LoginResult,
     chat::Text,
     server::{
         encryption::{PacketDecryption, PacketEncryption},
@@ -60,7 +60,7 @@ impl std::fmt::Display for ConnectError {
 impl std::error::Error for ConnectError {}
 
 pub struct EstablishedBackend {
-    profile: GameProfile,
+    profile: LoginResult,
     stream: TcpStream,
     compression_threshold: i32,
     version: i32,
@@ -73,7 +73,7 @@ impl EstablishedBackend {
         self,
         server_name: &str,
         partner: ClientHandle,
-    ) -> (GameProfile, ConnectionHandle) {
+    ) -> (LoginResult, ConnectionHandle) {
         let player_name = self.profile.name.clone();
         let Self {
             profile,
@@ -285,7 +285,7 @@ pub async fn connect<A: ToSocketAddrs>(
     addr: A,
     hs_host: String,
     hs_port: u16,
-    mut profile: GameProfile,
+    mut profile: LoginResult,
     player_public_key: Option<PlayerPublicKey>,
     version: i32,
 ) -> Result<EstablishedBackend, ConnectError> {

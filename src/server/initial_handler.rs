@@ -10,7 +10,7 @@ use tokio::{
 
 use self::packets::SetCompression;
 use crate::{
-    auth::GameProfile,
+    auth::LoginResult,
     chat::{Text, TextContent},
     haproxy::{
         HAProxyAdresses, HAProxyCommand, HAProxyMessage, HAProxyMessageV1, HAProxyMessageV2,
@@ -343,7 +343,7 @@ async fn handle_login(
                     let cfg = ProxyServer::instance().config();
                     if cfg.offline_mode_encryption || cfg.online_mode {
                         if !cfg.online_mode {
-                            profile = Some(GameProfile {
+                            profile = Some(LoginResult {
                                 id: crate::util::generate_uuid(&request.name).to_string(),
                                 name: request.name.clone(),
                                 properties: vec![],
@@ -363,7 +363,7 @@ async fn handle_login(
                         profile = Some(
                             finish_login(
                                 stream,
-                                GameProfile {
+                                LoginResult {
                                     id: crate::util::generate_uuid(&request.name).to_string(),
                                     name: request.name.clone(),
                                     properties: Vec::new(),
@@ -494,7 +494,7 @@ async fn handle_login(
                     }
                     return Ok(ProxyingData {
                         version,
-                        profile: profile.unwrap(),
+                        login_result: profile.unwrap(),
                         compression_threshold,
                         encryption: match encryption {
                             Some(encryption) => Some((encryption, decryption.unwrap())),
@@ -570,12 +570,12 @@ async fn send_encryption(
 
 async fn finish_login(
     stream: &mut TcpStream,
-    profile: GameProfile,
+    profile: LoginResult,
     version: i32,
     buffers: WriteBuffers<'_>,
     compression: &mut i32,
     encryption: &mut Option<PacketEncryption>,
-) -> IOResult<GameProfile> {
+) -> IOResult<LoginResult> {
     buffers.write_buf.clear();
     buffers.protocol_buf.clear();
     *compression = ProxyServer::instance().config().compression_threshold;

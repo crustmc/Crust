@@ -1,27 +1,17 @@
 use std::net::IpAddr;
 
 use serde::{Deserialize, Serialize};
-
+use uuid::Uuid;
 use crate::{
     server::ProxyServer,
     util::{IOError, IOErrorKind, IOResult},
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GameProfile {
+pub struct LoginResult {
     pub id: String,
     pub name: String,
     pub properties: Vec<Property>,
-}
-
-impl GameProfile {
-    pub fn clone_without_properties(&self) -> Self {
-        Self {
-            id: self.id.clone(),
-            name: self.name.clone(),
-            properties: Vec::new(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -36,7 +26,7 @@ pub async fn has_joined(
     server_id: &str,
     secret_key: &[u8; 16],
     ip: Option<IpAddr>,
-) -> IOResult<Option<GameProfile>> {
+) -> IOResult<Option<LoginResult>> {
     let name = urlencoding::encode(name);
     let server_id = server_hash(server_id, secret_key);
     let server_id = urlencoding::encode(&server_id);

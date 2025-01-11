@@ -32,6 +32,17 @@ macro_rules! hash_map {
     }
 }
 
+
+
+
+//pub fn uuid_from_str(str: &str) -> Result<Uuid> {
+//    if str.contains('-') {
+//        Ok(Uuid::parse_str(str)?.hyphenated())
+//    } else {
+//        
+//    }
+//}
+
 pub fn generate_uuid(username: &str) -> Uuid {
     uuid::Builder::from_md5_bytes(
         md5::compute(format!("OfflinePlayer:{username}").as_bytes()).into(),

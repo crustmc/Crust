@@ -1,6 +1,6 @@
 use crate::util::WeakHandle;
 use crate::{
-    auth::GameProfile,
+    auth::LoginResult,
     chat::Text,
     hash_map,
     plugin::PluginManager,
@@ -26,6 +26,7 @@ use std::{
 use tokio::io::AsyncWriteExt;
 use tokio::time::sleep;
 use tokio::{net::TcpListener, runtime::Runtime, sync::RwLock, task::JoinHandle};
+use uuid::Uuid;
 use wasmer_wasix::types::wasi::Clockid::ProcessCputimeId;
 
 pub(crate) mod backend;
@@ -181,6 +182,8 @@ pub struct ProxyServer {
     rsa_priv_key: RsaPrivateKey,
     rsa_pub_key: RsaPublicKey,
     players: RwLock<SlotMap<SlotId, Handle<ProxiedPlayer>>>,
+    player_by_name: RwLock<HashMap<String, SlotId>>,
+    player_by_uuid: RwLock<HashMap<Uuid, SlotId>>,
     pub player_count: usize,
     favicon: Option<String>,
 }
@@ -204,25 +207,27 @@ impl ProxyServer {
         &self.players
     }
 
-    pub async fn get_player_by_name(&self, name: &str) -> Option<WeakHandle<ProxiedPlayer>> {
-        let lock = self.players.read().await;
-        let player = lock
-            .iter()
-            .find(|(_, player_ref)| player_ref.profile.name.eq_ignore_ascii_case(name));
+  /*  pub async fn get_player_by_name(&self, name: &str) -> Option<WeakHandle<ProxiedPlayer>> {
+        let lock = self.player_by_name.blocking_read();
+        let player = lock.get(&name.to_ascii_lowercase())?;
         if let Some((_, player_ref)) = player {
             Some(player_ref.downgrade())
         } else {
             None
         }
-    }
+    }*/
 
     pub fn get_player_by_name_blocking(&self, name: &str) -> Option<WeakHandle<ProxiedPlayer>> {
+        let by_name_lock  = self.player_by_name.blocking_read();
+        let slot_id = by_name_lock.get(&name.to_ascii_lowercase());
+        if slot_id.is_none() {
+            return None;
+        }
+        let slot_id = slot_id.unwrap().clone();
         let lock = self.players.blocking_read();
-        let player = lock
-            .iter()
-            .find(|(_, player_ref)| player_ref.profile.name.eq_ignore_ascii_case(name));
-        if let Some((_, player_ref)) = player {
-            Some(player_ref.downgrade())
+        let handle = lock.get(slot_id);
+        if let Some(handle) = handle {
+            Some(handle.downgrade())
         } else {
             None
         }
@@ -388,6 +393,8 @@ pub fn run_server() {
             players: RwLock::new(SlotMap::new()),
             config,
             favicon: icon,
+            player_by_name: RwLock::new(HashMap::new()),
+            player_by_uuid: RwLock::new(HashMap::new())
         });
     }
 
@@ -445,9 +452,11 @@ pub fn run_server() {
 
 pub struct ProxiedPlayer {
     pub player_id: SlotId,
-    pub profile: GameProfile,
+    pub name: String,
+    pub uuid: Uuid,
+    pub login_result: LoginResult,
     pub player_public_key: Option<PlayerPublicKey>,
-    pub current_server: SlotId,
+    pub current_server: Option<SlotId>,
     pub client_handle: ConnectionHandle,
     pub server_handle: Option<ConnectionHandle>,
     pub protocol_version: i32,
@@ -456,9 +465,9 @@ pub struct ProxiedPlayer {
 
 impl ProxiedPlayer {
     pub fn has_permission(&self, perm: &str) -> bool {
-        let mut groups = ProxyServer::instance().config.users.get(&self.profile.name);
+        let mut groups = ProxyServer::instance().config.users.get(&self.name);
         if groups.is_none() {
-            let uuid = &self.profile.id.replace("-", "").to_string();
+            let uuid = &self.login_result.id.replace("-", "").to_string();
             groups = ProxyServer::instance().config.users.get(uuid);
         }
         if let Some(groups) = groups {
@@ -471,7 +480,7 @@ impl ProxiedPlayer {
                 } else {
                     error!(
                         "Group {} is not configured, but used by {}",
-                        group, &self.profile.name
+                        group, &self.name
                     );
                 }
             }
@@ -552,13 +561,13 @@ impl ProxiedPlayer {
                 (server.address.clone(), server.label.clone())
             };
 
-            let username = player.profile.name.clone();
+            let username = player.name.clone();
             let backend = backend::connect(
                 player.client_handle.address,
                 addr,
                 "127.0.0.1".to_string(),
                 25565,
-                player.profile.clone(),
+                player.login_result.clone(),
                 player.player_public_key.clone(),
                 version,
             )
@@ -599,7 +608,7 @@ impl ProxiedPlayer {
                 read_task.abort();
             }
 
-            let (profile, server_handle) = backend
+            let (login_result, server_handle) = backend
                 .begin_proxying(
                     &server_name,
                     ClientHandle {
@@ -645,9 +654,9 @@ impl ProxiedPlayer {
                 )
                 .await;
 
-            player.current_server = server_id;
+            player.current_server = Some(server_id);
             player.server_handle = Some(server_handle);
-            player.profile = profile;
+            player.login_result = login_result;
             player
                 .sync_data
                 .is_switching_server

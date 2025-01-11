@@ -10,6 +10,7 @@ use std::fmt::Arguments;
 use std::io;
 use std::io::Write;
 use tokio::io::AsyncWriteExt;
+use uuid::Uuid;
 
 pub mod auth;
 pub mod chat;
@@ -58,6 +59,11 @@ impl Write for SharedWriter {
 }
 
 fn main() {
+    let bert = Uuid::try_parse("6cb1b229-ce5c-4179-af8d-eea185c25963").unwrap();
+    let bert2 = Uuid::try_parse("6cb1b229ce5c4179af8deea185c25963").unwrap();
+    println!("{} : {} | {}", bert , bert2, bert == bert2);
+
+
     #[cfg(windows)]
     enable_virtual_terminal_processing();
 

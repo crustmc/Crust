@@ -1,4 +1,4 @@
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 use std::fmt::Display;
 use std::{
     io::Cursor,
@@ -10,12 +10,14 @@ use std::{
     },
     time::SystemTime,
 };
+use std::time::Duration;
 use tokio::{
     net::{tcp::OwnedReadHalf, TcpStream},
     sync::{mpsc::Sender, Mutex, Notify, RwLock},
     task::AbortHandle,
 };
-
+use tokio::time::sleep;
+use uuid::Uuid;
 use super::{
     encryption::{PacketDecryption, PacketEncryption},
     packet_handler::ClientPacketHandler,
@@ -25,7 +27,7 @@ use super::{
 use crate::server::packets::ClientCustomPayload;
 use crate::util::{IOError, IOResult};
 use crate::{
-    auth::GameProfile,
+    auth::LoginResult,
     chat::Text,
     server::{
         packet_ids::{PacketRegistry, ServerPacketType},
@@ -36,7 +38,7 @@ use crate::{
 };
 
 pub(crate) struct ProxyingData {
-    pub profile: GameProfile,
+    pub login_result: LoginResult,
     pub version: i32,
     pub compression_threshold: i32,
     pub encryption: Option<(PacketEncryption, PacketDecryption)>,
@@ -60,73 +62,27 @@ pub struct ClientHandle {
 }
 
 pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
-    let display_name = format!("[{}|{}]", data.profile.name, data.address);
-    log::debug!("{} Connecting to priority servers...", display_name);
-    let server_data = 'l: {
-        let servers = ProxyServer::instance().servers().read().await;
-        for server in servers.get_priorities() {
-            let server_id = servers.get_server_id_by_name(server);
-            if server_id.is_none() {
-                log::warn!("{} Skipping, prioritized server not found!", display_name);
-                continue;
-            }
-            let server_id = server_id.unwrap();
-            let default_server = servers.get_server(server_id).unwrap();
-            let addr = default_server.address.clone();
-
-            let backend = super::backend::connect(
-                data.address,
-                addr,
-                "127.0.0.1".to_string(),
-                25565,
-                data.profile.clone(),
-                data.player_public_key.clone(),
-                data.version,
-            )
-            .await;
-            if let Err(e) = backend {
-                log::warn!("[{}] Failed to connect to backend: {}", display_name, e);
-                continue;
-            }
-
-            break 'l Some((server.to_owned(), server_id, backend.unwrap()));
-        }
-        None
-    };
-
-    if server_data.is_none() {
-        let mut encryption = match data.encryption {
-            Some((enc, _)) => Some(enc),
-            _ => None,
-        };
-        let mut buf = vec![];
-        packets::get_full_server_packet_buf_write_buffer(
-            &mut buf,
-            &Kick {
-                text: Text::new("§cNo server found for you to connect"),
-            },
-            data.version,
-            data.protocol_state,
-        )
-        .unwrap();
-        encode_and_send_packet(
-            &mut stream,
-            &buf,
-            &mut vec![],
-            data.compression_threshold,
-            &mut encryption,
-        )
-        .await
-        .ok();
+    let display_name = format!("[{}|{}]", data.login_result.name, data.address);
+    let uuid = Uuid::try_parse(data.login_result.id.as_str());
+    if uuid.is_err() {
+        error!("{} Could not parse UUID {}", display_name, data.login_result.id.as_str());
         return;
     }
 
-    let (server_name, server_id, backend) = server_data.unwrap();
-    let (read, mut write) = stream.into_split();
+    let proxy_server = ProxyServer::instance();
+
+    let uuid = uuid.unwrap();
+    
+    let data_address = data.address.clone();
+    let data_login_result = data.login_result.clone();
+    let data_player_public_key = data.player_public_key.clone();
+    
     let (mut encryption, decryption) = match data.encryption {
         Some(encryption) => (Some(encryption.0), Some(encryption.1)),
         None => (None, None),
     };
+    
+    let (read, mut write) = stream.into_split();
     let compression_threshold = data.compression_threshold;
 
     let (sender, mut receiver) = tokio::sync::mpsc::channel(256);
@@ -263,31 +219,42 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
     );
     let disconnect_lock = handle.disconnect_wait.clone();
 
+    info!("{:?}", data.login_result);
     let mut player = Handle::new(ProxiedPlayer {
         player_id: unsafe {
             #[allow(invalid_value)]
             core::mem::MaybeUninit::zeroed().assume_init()
         },
+        name: data.login_result.name.clone(),
+        uuid,
         client_handle: handle.clone(),
-        current_server: server_id,
-        profile: data.profile,
+        current_server: None,
+        login_result: data.login_result,
         protocol_version: data.version,
         server_handle: None,
         player_public_key: data.player_public_key,
         sync_data: player_sync_data,
     });
+
+    let mut players = proxy_server.players().write().await;
+    
+    if proxy_server.player_by_uuid.read().await.contains_key(&player.uuid) || proxy_server.player_by_name.read().await.contains_key(&player.name.to_ascii_lowercase()) {
+        player.kick(Text::new("§cYou are already connected to this proxy")).await.ok();
+        return;
+    }
     let player_id = {
-        let mut players = ProxyServer::instance().players().write().await;
         let player_id = players.insert(player.clone());
+        proxy_server.player_by_uuid.write().await.insert(player.uuid, player_id);
+        proxy_server.player_by_name.write().await.insert(player.name.to_ascii_lowercase(), player_id);
         *unsafe {
             core::mem::transmute::<_, &mut usize>(
-                &ProxyServer::instance().player_count as *const usize,
+                &proxy_server.player_count as *const usize,
             )
         } += 1;
-        players.get_mut(player_id).unwrap().player_id = player_id;
-        drop(players);
         player_id
     };
+    players.get_mut(player_id).unwrap().player_id = player_id;
+    drop(players);
 
     let handle = ClientHandle {
         player: player.downgrade(),
@@ -295,16 +262,59 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
         connection: handle,
     };
     let con_handle = handle.connection.clone();
+    
+    debug!("{} Connecting to priority servers...", display_name);
+    let server_data = 'l: {
+        let servers = ProxyServer::instance().servers().read().await;
+        for server in servers.get_priorities() {
+            let server_id = servers.get_server_id_by_name(server);
+            if server_id.is_none() {
+                warn!("{} Skipping, prioritized server not found!", display_name);
+                continue;
+            }
+            let server_id = server_id.unwrap();
+            let default_server = servers.get_server(server_id).unwrap();
+            let addr = default_server.address.clone();
+
+            let backend = super::backend::connect(
+                data_address,
+                addr,
+                "127.0.0.1".to_string(),
+                25565,
+                data_login_result.clone(),
+                data_player_public_key.clone(),
+                data.version,
+            )
+                .await;
+            if let Err(e) = backend {
+                warn!("[{}] Failed to connect to backend: {}", display_name, e);
+                continue;
+            }
+
+            break 'l Some((server.to_owned(), server_id, backend.unwrap()));
+        }
+        None
+    };
+
+    if server_data.is_none() {
+        player.kick(Text::new("§cNo server found for you to connect")).await.ok();
+        return;
+    }
+
+    let (server_name, server_id, backend) = server_data.unwrap();
     let (_backend_profile, backend_handle) = backend.begin_proxying(&server_name, handle).await;
 
     tokio::spawn(async move {
         let disconnect_guard = disconnect_lock.write().await;
         let _ = write_task.await;
-        let mut lock = ProxyServer::instance().players().write().await;
+        let proxy_server = ProxyServer::instance();
+        let mut lock = proxy_server.players().write().await;
         if let Some(player) = lock.remove(player_id) {
+            proxy_server.player_by_uuid.write().await.remove(&player.uuid);
+            proxy_server.player_by_name.write().await.remove(&player.name.to_ascii_lowercase());
             *unsafe {
                 core::mem::transmute::<_, &mut usize>(
-                    &ProxyServer::instance().player_count as *const usize,
+                    &proxy_server.player_count as *const usize,
                 )
             } -= 1;
             drop(lock);
@@ -316,6 +326,8 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
         }
         drop(disconnect_guard);
     });
+    
+    player.current_server = Some(server_id);
     player.server_handle = Some(backend_handle.clone());
 
     con_handle
@@ -564,11 +576,11 @@ impl ConnectionHandle {
 
     pub async fn disconnect(&self, reason: &str) {
         if self.closed.load(Ordering::Relaxed) {
-            log::debug!("{} disconnected twice: {}", self.name, reason);
+            debug!("{} disconnected twice: {}", self.name, reason);
             return;
         }
         self.closed.swap(true, Ordering::Relaxed);
-        log::info!("{} disconnected: {}", self.name, reason);
+        info!("{} disconnected: {}", self.name, reason);
         self.write_task.abort();
         if let Some(task) = self.read_task.lock().await.take() {
             task.abort();
