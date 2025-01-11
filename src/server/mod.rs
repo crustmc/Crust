@@ -14,7 +14,6 @@ use packets::{PlayerPublicKey, ProtocolState, SystemChatMessage};
 use proxy_handler::{ClientHandle, ConnectionHandle, PlayerSyncData};
 use rsa::{RsaPrivateKey, RsaPublicKey};
 use serde::{Deserialize, Serialize};
-use slotmap::{DefaultKey, SlotMap};
 use std::{
     collections::HashMap,
     future::Future,
@@ -23,6 +22,7 @@ use std::{
     sync::atomic::Ordering,
     time::{Duration, Instant},
 };
+use slotmap::{DefaultKey, SlotMap};
 use tokio::io::AsyncWriteExt;
 use tokio::time::sleep;
 use tokio::{net::TcpListener, runtime::Runtime, sync::RwLock, task::JoinHandle};
@@ -181,9 +181,8 @@ pub struct ProxyServer {
     servers: RwLock<ServerList>,
     rsa_priv_key: RsaPrivateKey,
     rsa_pub_key: RsaPublicKey,
-    players: RwLock<SlotMap<SlotId, Handle<ProxiedPlayer>>>,
-    player_by_name: RwLock<HashMap<String, SlotId>>,
-    player_by_uuid: RwLock<HashMap<Uuid, SlotId>>,
+    player_by_name: RwLock<HashMap<String, WeakHandle<ProxiedPlayer>>>,
+    player_by_uuid: RwLock<HashMap<Uuid, WeakHandle<ProxiedPlayer>>>,
     pub player_count: usize,
     favicon: Option<String>,
 }
@@ -203,9 +202,9 @@ impl ProxyServer {
         &self.servers
     }
 
-    pub fn players(&self) -> &RwLock<SlotMap<SlotId, Handle<ProxiedPlayer>>> {
+    /*pub fn players(&self) -> &RwLock<SlotMap<SlotId, Handle<ProxiedPlayer>>> {
         &self.players
-    }
+    }*/
 
   /*  pub async fn get_player_by_name(&self, name: &str) -> Option<WeakHandle<ProxiedPlayer>> {
         let lock = self.player_by_name.blocking_read();
@@ -218,19 +217,7 @@ impl ProxyServer {
     }*/
 
     pub fn get_player_by_name_blocking(&self, name: &str) -> Option<WeakHandle<ProxiedPlayer>> {
-        let by_name_lock  = self.player_by_name.blocking_read();
-        let slot_id = by_name_lock.get(&name.to_ascii_lowercase());
-        if slot_id.is_none() {
-            return None;
-        }
-        let slot_id = slot_id.unwrap().clone();
-        let lock = self.players.blocking_read();
-        let handle = lock.get(slot_id);
-        if let Some(handle) = handle {
-            Some(handle.downgrade())
-        } else {
-            None
-        }
+        self.player_by_name.blocking_read().get(&name.to_ascii_lowercase()).cloned()
     }
 
     pub fn rsa_private_key(&self) -> &RsaPrivateKey {
@@ -273,9 +260,11 @@ impl ProxyServer {
         };
 
         self.block_on(async move {
-            let block = self.players.read().await;
+            let block = self.player_by_name.read().await;
             for player in block.values() {
-                player.kick(msg.clone()).await.ok();
+                if let Some(player) = player.upgrade() {
+                    player.kick(msg.clone()).await.ok();
+                }
             }
             std::process::exit(0);
         });
@@ -390,7 +379,6 @@ pub fn run_server() {
             rsa_pub_key: pub_key,
             servers: RwLock::new(server_list),
             player_count: 0,
-            players: RwLock::new(SlotMap::new()),
             config,
             favicon: icon,
             player_by_name: RwLock::new(HashMap::new()),
@@ -451,7 +439,6 @@ pub fn run_server() {
 }
 
 pub struct ProxiedPlayer {
-    pub player_id: SlotId,
     pub name: String,
     pub uuid: Uuid,
     pub login_result: LoginResult,

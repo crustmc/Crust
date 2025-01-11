@@ -220,10 +220,6 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
     let disconnect_lock = handle.disconnect_wait.clone();
 
     let mut player = Handle::new(ProxiedPlayer {
-        player_id: unsafe {
-            #[allow(invalid_value)]
-            core::mem::MaybeUninit::zeroed().assume_init()
-        },
         name: data.login_result.name.clone(),
         uuid,
         client_handle: handle.clone(),
@@ -235,25 +231,25 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
         sync_data: player_sync_data,
     });
 
-    let mut players = proxy_server.players().write().await;
+    let mut players_by_name = proxy_server.player_by_name.write().await;
+    let mut players_by_uuid = proxy_server.player_by_uuid.write().await;
 
-    if proxy_server.player_by_uuid.read().await.contains_key(&player.uuid) || proxy_server.player_by_name.read().await.contains_key(&player.name.to_ascii_lowercase()) {
-        player.kick(Text::new("§cYou are already connected to this proxy")).await.ok();
+    if players_by_uuid.contains_key(&player.uuid) || players_by_name.contains_key(&player.name.to_ascii_lowercase()) {
+        &player.kick(Text::new("§cYou are already connected to this proxy")).await.ok();
         return;
     }
-    let player_id = {
-        let player_id = players.insert(player.clone());
-        proxy_server.player_by_uuid.write().await.insert(player.uuid, player_id);
-        proxy_server.player_by_name.write().await.insert(player.name.to_ascii_lowercase(), player_id);
-        *unsafe {
-            core::mem::transmute::<_, &mut usize>(
-                &proxy_server.player_count as *const usize,
-            )
-        } += 1;
-        player_id
-    };
-    players.get_mut(player_id).unwrap().player_id = player_id;
-    drop(players);
+
+    players_by_uuid.insert(player.uuid, player.downgrade());
+    players_by_name.insert(player.name.to_ascii_lowercase(), player.downgrade());
+    *unsafe {
+        core::mem::transmute::<_, &mut usize>(
+            &proxy_server.player_count as *const usize,
+        )
+    } += 1;
+
+    drop(players_by_name);
+    drop(players_by_uuid);
+
 
     let handle = ClientHandle {
         player: player.downgrade(),
@@ -295,26 +291,31 @@ pub async fn handle(mut stream: TcpStream, data: ProxyingData) {
         None
     };
 
+    let player_handle_clone = player.clone();
+
     tokio::spawn(async move {
         let disconnect_guard = disconnect_lock.write().await;
         let _ = write_task.await;
         let proxy_server = ProxyServer::instance();
-        let mut lock = proxy_server.players().write().await;
-        if let Some(player) = lock.remove(player_id) {
-            proxy_server.player_by_uuid.write().await.remove(&player.uuid);
-            proxy_server.player_by_name.write().await.remove(&player.name.to_ascii_lowercase());
-            *unsafe {
-                core::mem::transmute::<_, &mut usize>(
-                    &proxy_server.player_count as *const usize,
-                )
-            } -= 1;
-            drop(lock);
-            if let Some(ref backend_handle) = player.server_handle {
-                backend_handle.disconnect("client disconnected").await;
-            }
-        } else {
-            panic!("Tried to remove player that is for whatever reason not in the player list! This is not intended to happen!");
+        let mut player_by_name = proxy_server.player_by_name.write().await;
+        let mut player_by_uuid = proxy_server.player_by_uuid.write().await;
+
+        player_by_name.remove(&player_handle_clone.name);
+        player_by_uuid.remove(&player_handle_clone.uuid);
+
+        *unsafe {
+            core::mem::transmute::<_, &mut usize>(
+                &proxy_server.player_count as *const usize,
+            )
+        } -= 1;
+        
+        drop(player_by_name);
+        drop(player_by_uuid);
+
+        if let Some(ref backend_handle) = player_handle_clone.server_handle {
+            backend_handle.disconnect("client disconnected").await;
         }
+        
         drop(disconnect_guard);
     });
 

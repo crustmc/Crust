@@ -127,15 +127,17 @@ fn send_command_completer(
             });
         }
         
-        let players = ProxyServer::instance().players().blocking_read();
+        let players = ProxyServer::instance().player_by_name.blocking_read();
         for (_, player) in players.iter() {
-            if !player.name.starts_with(filter) {
-                continue;
+            if let Some(player) = player.upgrade() {
+                if !player.name.starts_with(filter) {
+                    continue;
+                }
+                suggestions.matches.push(Suggestion {
+                    text: player.name.clone(),
+                    tooltip: None,
+                });
             }
-            suggestions.matches.push(Suggestion {
-                text: player.name.clone(),
-                tooltip: None,
-            });
         }
     } else if args.len() == 2 {
         let filter = args.get(1).unwrap();
@@ -163,15 +165,17 @@ fn gkick_command_completer(
         return;
     }
     let filter = args.first().unwrap();
-    let players = ProxyServer::instance().players().blocking_read();
+    let players = ProxyServer::instance().player_by_name.blocking_read();
     for (_, player) in players.iter() {
-        if !player.name.starts_with(filter) {
-            continue;
+        if let Some(player) = player.upgrade() {
+            if !player.name.starts_with(filter) {
+                continue;
+            }
+            suggestions.matches.push(Suggestion {
+                text: player.name.clone(),
+                tooltip: None,
+            });
         }
-        suggestions.matches.push(Suggestion {
-            text: player.name.clone(),
-            tooltip: None,
-        });
     }
 }
 
@@ -192,8 +196,10 @@ fn send_command(sender: &CommandSender, _name: &str, args: Vec<&str>) {
 
     if player_name.eq_ignore_ascii_case("*") {
         ProxyServer::instance().spawn_task(async move {
-            for (_, player) in ProxyServer::instance().players().read().await.iter() {
-                ProxiedPlayer::switch_server(player.clone(), server_id_to).await;
+            for (_, player) in ProxyServer::instance().player_by_name.read().await.iter() {
+                if let Some(player) = player.upgrade() {
+                    ProxiedPlayer::switch_server(player, server_id_to).await;
+                }
             }
         });
     }
@@ -207,10 +213,12 @@ fn send_command(sender: &CommandSender, _name: &str, args: Vec<&str>) {
                 if let Some(player) = player.upgrade() {
                     if let Some(server_from) = player.current_server {
                         ProxyServer::instance().spawn_task(async move {
-                            for (_, player) in ProxyServer::instance().players().read().await.iter() {
-                                if let Some(players_server) = player.current_server {
-                                    if players_server == server_from {
-                                        ProxiedPlayer::switch_server(player.clone(), server_id_to).await;
+                            for (_, player) in ProxyServer::instance().player_by_name.read().await.iter() {
+                                if let Some(player) = player.upgrade() {
+                                    if let Some(players_server) = player.current_server {
+                                        if players_server == server_from {
+                                            ProxiedPlayer::switch_server(player.clone(), server_id_to).await;
+                                        }
                                     }
                                 }
                             }
@@ -244,20 +252,22 @@ fn send_command(sender: &CommandSender, _name: &str, args: Vec<&str>) {
 fn glist_command(sender: &CommandSender, _name: &str, args: Vec<&str>) {
     let mut amt = 0usize;
     let mut map = HashMap::new();
-    let players = ProxyServer::instance().players.blocking_read();
+    let players = ProxyServer::instance().player_by_name.blocking_read();
     let servers = ProxyServer::instance().servers.blocking_read();
     for (_, player) in players.iter() {
-        amt += 1;
-        if let Some(server_id) = player.current_server {
-            if let Some(server) = servers.servers.get(server_id) {
-                if !map.contains_key(&server.label) {
-                    let vec = vec!(player.name.clone());
-                    map.insert(server.label.clone(), vec);
-                } else {
-                    let mut values = map.get_mut(&server.label).unwrap();
-                    values.push(player.name.clone());
+        if let Some(player) = player.upgrade() {
+            amt += 1;
+            if let Some(server_id) = player.current_server {
+                if let Some(server) = servers.servers.get(server_id) {
+                    if !map.contains_key(&server.label) {
+                        let vec = vec!(player.name.clone());
+                        map.insert(server.label.clone(), vec);
+                    } else {
+                        let mut values = map.get_mut(&server.label).unwrap();
+                        values.push(player.name.clone());
+                    }
                 }
-            }
+            }    
         }
     }
     drop(players);

@@ -297,12 +297,18 @@ impl ServerPacketHandler {
                             "KickPlayerRaw" => {
                                 let player_name = nbt::read_java_utf(&mut input)?;
                                 //ProxyServer::instance().players().read().await.iter().filter( |(id, player_ref)| player_ref.profile.name == player_name)
-                                let lock = ProxyServer::instance().players().read().await;
+                                let lock = ProxyServer::instance().player_by_name.read().await;
                                 let player = lock.iter().find(|(_id, player_ref)| {
-                                    player_ref.name == player_name
+                                    if let Some(player) = player.upgrade() {
+                                        player.name == player_name
+                                    } else {
+                                        false
+                                    }
                                 });
                                 if let Some((_, player)) = player {
-                                    player.kick(Text::new("a")).await?;
+                                    if let Some(player) = player.upgrade() {
+                                        player.kick(Text::new("a")).await?;
+                                    }
                                 }
                                 todo!()
                             }
